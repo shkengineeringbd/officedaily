@@ -2,12 +2,18 @@
 declare(strict_types=1);
 define('OFFICE_APP',true);
 require __DIR__.'/office-private/bootstrap.php';
+require __DIR__.'/office-private/daily.php';
 headers_secure();
 try {
     session_boot();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (($_GET['registration']??'')==='1') output(registration_state());
         $a=actor(); $owner=$a['role']==='owner';
+        if (isset($_GET['workday'])) {
+            $date=day_input(['date'=>$_GET['workday']]);
+            if ($date>today()) fail('সঠিক তারিখ বেছে নিন।');
+            output(['entries'=>daily_list($a,$date),'today'=>today()]);
+        }
         if (isset($_GET['task'])) {
             $task=visible($a,id_input($_GET,'task'));
             output(['task'=>$task,'reports'=>rows('SELECT * FROM od_reports WHERE task_id=? ORDER BY date DESC LIMIT 365',[$task['id']]),'comments'=>rows('SELECT * FROM od_comments WHERE task_id=? ORDER BY created_at DESC LIMIT 500',[$task['id']]),'today'=>today()]);
@@ -57,6 +63,7 @@ try {
         query("INSERT INTO od_registration_requests (id,user_id,email,name,status,created_at) VALUES (?,?,?,?,'pending',?) ON DUPLICATE KEY UPDATE name=VALUES(name)",[uid(),$u['id'],$u['email'],$name,$n]); output(['ok'=>true]);
     }
     $a=actor();
+    if ($action==='daily_work') { daily_save($a,$v); output(['ok'=>true]); }
     if (!in_array($action,['member','task','status','approve','reject','report','comment'],true)) fail('সঠিক তথ্য দিন।');
     if (in_array($action,['member','task','status','approve','reject'],true) && $a['role']!=='owner') fail('শুধু মালিক এই পরিবর্তন করতে পারেন।',403);
     if ($action==='approve' || $action==='reject') {
