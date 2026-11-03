@@ -1,0 +1,4 @@
+/office-private/config.php
+/office-private/install.lock
+/office-private/config-*.php
+.env

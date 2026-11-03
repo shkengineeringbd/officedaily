@@ -1,0 +1,9 @@
+Options -Indexes
+DirectoryIndex index.php
+<FilesMatch "(?i)^(?:\.|.*\.(?:zip|sql|log|txt|md|ini|env|bak|tmp|lock|json|tsx?|map))">
+    Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+</IfModule>

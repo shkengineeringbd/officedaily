@@ -62,7 +62,7 @@ $defaultUrl=$local?'http://127.0.0.1:8788':'https://shkg.info';
 <label>MySQL password<input required name="db_password" type="password" autocomplete="new-password"></label>
 <label>Admin name<input required name="name" maxLength="100" value="<?=esc($_POST['name']??'SHK Engineering')?>"></label>
 <label>Admin email<input required name="email" type="email" maxLength="254" value="<?=esc($_POST['email']??'shkengineeringbd@gmail.com')?>"></label>
-<label>Admin password<input required name="admin_password" type="password" minLength="12" maxLength="72" autocomplete="new-password"></label>
-<label>Confirm admin password<input required name="confirm_password" type="password" minLength="12" maxLength="72" autocomplete="new-password"></label>
-<p class="form-note">কমপক্ষে ১২ অক্ষরের আলাদা পাসওয়ার্ড দিন। এই অ্যাপে ইমেইল যাচাই বা ইমেইলে পাসওয়ার্ড রিসেট পাঠানোর ব্যবস্থা নেই। কর্মীর নিবন্ধন অনুমোদনের আগে পরিচয় যাচাই করুন।<br>Use a unique password of 12+ characters. Registration emails are self-declared; the administrator must confirm employee identity before approval. No email delivery or email verification is configured.</p>
+<label>Admin password<input required name="admin_password" type="password" minLength="6" maxLength="72" autocomplete="new-password"></label>
+<label>Confirm admin password<input required name="confirm_password" type="password" minLength="6" maxLength="72" autocomplete="new-password"></label>
+<p class="form-note">কমপক্ষে ৬ অক্ষরের আলাদা পাসওয়ার্ড দিন। এই অ্যাপে ইমেইল যাচাই বা ইমেইলে পাসওয়ার্ড রিসেট পাঠানোর ব্যবস্থা নেই। কর্মীর নিবন্ধন অনুমোদনের আগে পরিচয় যাচাই করুন।<br>Use a unique password of 6+ characters. Registration emails are self-declared; the administrator must confirm employee identity before approval. No email delivery or email verification is configured.</p>
 <button class="btn primary registration-submit">ইনস্টল করুন / Install</button></form><?php endif; ?></section></main></body></html>

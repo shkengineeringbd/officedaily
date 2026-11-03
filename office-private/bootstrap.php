@@ -69,7 +69,7 @@ function strval_input(array $v,string $key,int $max=5000,bool $empty=false): str
 function id_input(array $v,string $key): string { return strval_input($v,$key,100); }
 function email_input(array $v): string { $s=strtolower(strval_input($v,'email',254)); if (!filter_var($s,FILTER_VALIDATE_EMAIL)) fail('সঠিক ইমেইল দিন।'); return $s; }
 function password_input(array $v,string $key='password'): string {
-    $p=$v[$key]??null; if (!is_string($p) || strlen($p)<12 || strlen($p)>72 || str_contains($p,"\0")) fail('পাসওয়ার্ড ১২ থেকে ৭২ বাইটের মধ্যে হতে হবে।'); return $p;
+    $p=$v[$key]??null; if (!is_string($p) || strlen($p)<6 || strlen($p)>72 || str_contains($p,"\0")) fail('পাসওয়ার্ড ৬ থেকে ৭২ বাইটের মধ্যে হতে হবে।'); return $p;
 }
 function bool_input(array $v,string $key): int { if (!array_key_exists($key,$v) || !is_bool($v[$key])) fail('সঠিক তথ্য দিন।'); return (int)$v[$key]; }
 function role_input(array $v): string { $r=$v['role']??''; if (!in_array($r,['officer','manager'],true)) fail('সঠিক তথ্য দিন।'); return $r; }
