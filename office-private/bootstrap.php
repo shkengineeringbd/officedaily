@@ -87,7 +87,7 @@ function account(): ?array {
 }
 function require_account(): array { $u=account(); if (!$u) fail('লগইন করুন।',401); return $u; }
 function actor(): array {
-    $u=require_account(); if ((int)$u['is_owner']===1) return ['id'=>'owner','userId'=>$u['id'],'email'=>$u['email'],'name'=>$u['name'],'role'=>'owner','viewAll'=>1];
+    $u=require_account(); if(function_exists('access_enabled')&&!access_enabled($u['id']))fail('অ্যাকাউন্টের অ্যাক্সেস বন্ধ রয়েছে।',403); if ((int)$u['is_owner']===1) return ['id'=>'owner','userId'=>$u['id'],'email'=>$u['email'],'name'=>$u['name'],'role'=>'owner','viewAll'=>1];
     $m=one('SELECT * FROM od_members WHERE user_id=? AND email=? AND active=1',[$u['id'],$u['email']]);
     if (!$m) fail('এই অ্যাপে আপনার অ্যাক্সেস দেওয়া হয়নি।',403);
     return ['id'=>$m['id'],'userId'=>$u['id'],'email'=>$u['email'],'name'=>$m['name'],'role'=>$m['role'],'viewAll'=>(int)$m['view_all']];
@@ -95,6 +95,7 @@ function actor(): array {
 function registration_state(): array {
     $u=account(); if (!$u) return ['state'=>'signed_out','user'=>null];
     $user=['name'=>$u['name'],'email'=>$u['email']];
+    if(function_exists('access_enabled')&&!access_enabled($u['id']))return ['state'=>'disabled','user'=>$user];
     if ((int)$u['is_owner']===1) return ['state'=>'approved','user'=>$user];
     $m=one('SELECT active FROM od_members WHERE user_id=?',[$u['id']]);
     if ($m) return ['state'=>(int)$m['active']===1?'approved':'disabled','user'=>$user];
@@ -118,3 +119,4 @@ function throttle(string $category,string $identity,int $limit): void {
     if (random_int(1,100)===1) query('DELETE FROM od_rate_limits WHERE window_at<?',[$n-3600]);
 }
 function sign_in(array $u): void { session_regenerate_id(true); $_SESSION['account_id']=$u['id']; $_SESSION['version']=(int)$u['session_version']; $_SESSION['started']=time(); $_SESSION['last_seen']=time(); }
+

@@ -3,12 +3,15 @@ declare(strict_types=1);
 define('OFFICE_APP',true);
 require __DIR__.'/office-private/bootstrap.php';
 require __DIR__.'/office-private/daily.php';
+require __DIR__.'/office-private/people.php';
 headers_secure();
 try {
     session_boot();
+    people_storage();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (($_GET['registration']??'')==='1') output(registration_state());
         $a=actor(); $owner=$a['role']==='owner';
+        if (isset($_GET['hr'])) hr_get($a);
         if (isset($_GET['workday'])) {
             $date=day_input(['date'=>$_GET['workday']]);
             if ($date>today()) fail('সঠিক তারিখ বেছে নিন।');
@@ -27,24 +30,29 @@ try {
         output(['actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>grants($a),'audit'=>$owner?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$owner?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[],'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
+    if ($action==='recovery_request') recovery_request($v);
+    if ($action==='recovery_reset') recovery_reset($v);
     if ($action==='login') {
-        $email=email_input($v); $password=$v['password']??'';
+        $identifier=strval_input(['identifier'=>$v['identifier']??$v['email']??''],'identifier',254); $email=strtolower(trim($identifier)); $password=$v['password']??'';
         if (!is_string($password) || strlen($password)>72 || str_contains($password,"\0")) fail('ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।',401);
-        throttle('login-ip',$_SERVER['REMOTE_ADDR']??'unknown',40); throttle('login-account',$email,12);
-        $u=one('SELECT * FROM od_accounts WHERE email=?',[$email]);
+        throttle('login-ip',$_SERVER['REMOTE_ADDR']??'unknown',40);
+        $u=login_account($identifier); throttle('login-account',$u['id']??$email,12);
         // Same password work even when the account does not exist.
         $hash=$u['password_hash']??'$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi';
         if (!password_verify($password,$hash) || !$u) fail('ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।',401);
         if (password_needs_rehash($u['password_hash'],PASSWORD_DEFAULT)) query('UPDATE od_accounts SET password_hash=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),$u['id']]);
+        if(!access_enabled($u['id'])) fail('অ্যাকাউন্টের অ্যাক্সেস বন্ধ রয়েছে। অ্যাডমিনের সঙ্গে যোগাযোগ করুন।',403);
         sign_in($u); output(['ok'=>true]);
     }
     if ($action==='signup') {
-        $email=email_input($v); $name=strval_input($v,'name',100); $password=password_input($v);
+        $email=email_input($v); $name=strval_input($v,'name',100); $password=password_input($v); $phone=phone_input($v['phone']??null);
+        if(one('SELECT account_id FROM od_hr_profiles WHERE phone=?',[$phone]))fail('মোবাইল নম্বরটি ইতিমধ্যে আছে।');
         throttle('signup-ip',$_SERVER['REMOTE_ADDR']??'unknown',12);
         if (one('SELECT id FROM od_accounts WHERE email=?',[$email])) fail('এই ইমেইল ইতিমধ্যে আছে।');
         $uid=uid(); $rid=uid(); $hash=password_hash($password,PASSWORD_DEFAULT);
-        transaction(function() use($uid,$email,$name,$hash,$rid,$n) {
+        transaction(function() use($uid,$email,$name,$hash,$rid,$n,$phone) {
             query('INSERT INTO od_accounts (id,email,name,password_hash,is_owner,session_version,created_at) VALUES (?,?,?,?,0,1,?)',[$uid,$email,$name,$hash,$n]);
+            query('INSERT INTO od_hr_profiles (account_id,phone) VALUES (?,?)',[$uid,$phone]);
             query("INSERT INTO od_registration_requests (id,user_id,email,name,status,created_at) VALUES (?,?,?,?,'pending',?)",[$rid,$uid,$email,$name,$n]);
         });
         sign_in(['id'=>$uid,'session_version'=>1]); output(['ok'=>true,'state'=>'pending']);
@@ -63,6 +71,7 @@ try {
         query("INSERT INTO od_registration_requests (id,user_id,email,name,status,created_at) VALUES (?,?,?,?,'pending',?) ON DUPLICATE KEY UPDATE name=VALUES(name)",[uid(),$u['id'],$u['email'],$name,$n]); output(['ok'=>true]);
     }
     $a=actor();
+    if(people_action($a,$v,$action)) output(['ok'=>true]);
     if ($action==='daily_work') { daily_save($a,$v); output(['ok'=>true]); }
     if (!in_array($action,['member','task','status','approve','reject','report','comment'],true)) fail('সঠিক তথ্য দিন।');
     if (in_array($action,['member','task','status','approve','reject'],true) && $a['role']!=='owner') fail('শুধু মালিক এই পরিবর্তন করতে পারেন।',403);
@@ -103,6 +112,7 @@ try {
                 if (!$old || !$old['user_id']) fail('আগে রেজিস্ট্রেশন অনুমোদন করুন।');
                 query('UPDATE od_accounts SET password_hash=?,session_version=session_version+1 WHERE id=? AND is_owner=0',[password_hash($newPassword,PASSWORD_DEFAULT),$old['user_id']]);
             }
+            if ($old && $old['user_id']) { hr_touch($old['user_id']);query('UPDATE od_hr_profiles SET access_enabled=? WHERE account_id=?',[$active,$old['user_id']]); }
             if ($old && !$active && $old['user_id']) query('UPDATE od_accounts SET session_version=session_version+1 WHERE id=?',[$old['user_id']]);
             audit($a,'অনুমতি আপডেট',$name);
         }); output(['ok'=>true]);
@@ -145,3 +155,4 @@ try {
     if ($code===500) error_log('Office Daily API error: '.get_class($e));
     output(['error'=>$code===500?'সেভ করা যায়নি। আবার চেষ্টা করুন।':$e->getMessage()],$code);
 }
+
