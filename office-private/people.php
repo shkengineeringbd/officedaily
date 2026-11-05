@@ -113,6 +113,7 @@ function people_action(array $a,array $v,string $action): bool {
         query("DELETE FROM od_audit WHERE actor_user_id=? OR actor_id=? OR target=? OR SUBSTRING_INDEX(target,' ',-1)=? OR SUBSTRING_INDEX(target,' ',-1)=?",[$id,$mid,$u['email'],$u['email'],$id]);
         query('DELETE FROM od_members WHERE user_id=? OR email=?',[$id,$u['email']]);query('DELETE FROM od_registration_requests WHERE user_id=?',[$id]);
         foreach(['od_attendance','od_leave_requests','od_payroll','od_password_recovery','od_hr_profiles'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
+        query('DELETE FROM od_budget_roles WHERE account_id=?',[$id]);
         query('DELETE FROM od_accounts WHERE id=? AND is_owner=0',[$id]);
       });unset($_SESSION['delete_challenge']);return true;
     }

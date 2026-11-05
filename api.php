@@ -4,13 +4,16 @@ define('OFFICE_APP',true);
 require __DIR__.'/office-private/bootstrap.php';
 require __DIR__.'/office-private/daily.php';
 require __DIR__.'/office-private/people.php';
+require __DIR__.'/office-private/budget.php';
 headers_secure();
 try {
     session_boot();
     people_storage();
+    budget_storage();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (($_GET['registration']??'')==='1') output(registration_state());
-        $a=actor(); $owner=$a['role']==='owner';
+        $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        if (isset($_GET['budget'])) budget_get($a);
         if (isset($_GET['hr'])) hr_get($a);
         if (isset($_GET['workday'])) {
             $date=day_input(['date'=>$_GET['workday']]);
@@ -71,6 +74,7 @@ try {
         query("INSERT INTO od_registration_requests (id,user_id,email,name,status,created_at) VALUES (?,?,?,?,'pending',?) ON DUPLICATE KEY UPDATE name=VALUES(name)",[uid(),$u['id'],$u['email'],$name,$n]); output(['ok'=>true]);
     }
     $a=actor();
+    if(budget_action($a,$v,$action)) output(['ok'=>true]);
     if(people_action($a,$v,$action)) output(['ok'=>true]);
     if ($action==='daily_work') { daily_save($a,$v); output(['ok'=>true]); }
     if (!in_array($action,['member','task','status','approve','reject','report','comment'],true)) fail('সঠিক তথ্য দিন।');
