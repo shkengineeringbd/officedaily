@@ -7,3 +7,8 @@ DirectoryIndex index.php
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "DENY"
 </IfModule>
+<IfModule mod_headers.c>
+    <FilesMatch "(?i)\.(?:js|css)$">
+        Header set Cache-Control "public, max-age=86400"
+    </FilesMatch>
+</IfModule>

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 function daily_storage(): void {
+    if(defined('OFFICE_SCHEMA_READY'))return;
     query("CREATE TABLE IF NOT EXISTS od_daily_work (
         task_id VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
         work_date CHAR(10) NOT NULL,

@@ -42,14 +42,21 @@ function money_input(array $v,string $key): string {
     $s=(string)$s;if(!preg_match('/^\d{1,9}(\.\d{1,2})?$/',$s))fail('বেতনের সঠিক পরিমাণ দিন।');
     return number_format((float)$s,2,'.','');
 }
-function hr_summary(string $uid,string $year): array {
-    $u=one('SELECT id,email,name,is_owner FROM od_accounts WHERE id=?',[$uid]);
-    $h=one('SELECT * FROM od_hr_profiles WHERE account_id=?',[$uid])??['phone'=>null,'access_enabled'=>1,'basic_salary'=>'0.00','medical_allowance'=>'0.00','other_allowance'=>'0.00','annual_leave'=>0,'designation'=>'','joining_date'=>null];
-    unset($h['account_id']);
-    $used=(int)(one("SELECT COALESCE(SUM(days),0) AS days FROM od_leave_requests WHERE account_id=? AND status='approved' AND start_date>=? AND end_date<=?",[$uid,$year.'-01-01',$year.'-12-31'])['days']??0);
-    $member=one('SELECT active FROM od_members WHERE user_id=?',[$uid]);$registration=one('SELECT status FROM od_registration_requests WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[$uid]);
-    $state=(int)$u['is_owner']===1?'approved':($member?((int)$member['active']===1?'approved':'disabled'):($registration['status']??'new'));
-    return array_merge($u,$h,['registration_status'=>$state,'leave_used'=>$used,'leave_remaining'=>max(0,(int)$h['annual_leave']-$used)]);
+function hr_profiles(string $where,array $args,string $year):array{
+    $list=rows("SELECT a.id,a.email,a.name,a.is_owner,h.phone,COALESCE(h.access_enabled,1) AS access_enabled,
+      COALESCE(h.basic_salary,0.00) AS basic_salary,COALESCE(h.medical_allowance,0.00) AS medical_allowance,COALESCE(h.other_allowance,0.00) AS other_allowance,
+      COALESCE(h.annual_leave,0) AS annual_leave,COALESCE(h.designation,'') AS designation,h.joining_date,
+      CASE WHEN a.is_owner=1 THEN 'approved' WHEN m.id IS NOT NULL THEN IF(m.active=1,'approved','disabled') ELSE COALESCE(r.status,'new') END AS registration_status,
+      COALESCE(l.used,0) AS leave_used,GREATEST(0,COALESCE(h.annual_leave,0)-COALESCE(l.used,0)) AS leave_remaining
+      FROM od_accounts a LEFT JOIN od_hr_profiles h ON h.account_id=a.id LEFT JOIN od_members m ON m.user_id=a.id
+      LEFT JOIN od_registration_requests r ON r.user_id=a.id
+      LEFT JOIN (SELECT account_id,SUM(days) AS used FROM od_leave_requests WHERE status='approved' AND start_date>=? AND end_date<=? GROUP BY account_id) l ON l.account_id=a.id
+      WHERE $where ORDER BY a.is_owner DESC,a.name",[$year.'-01-01',$year.'-12-31',...$args]);
+    foreach($list as &$u)foreach(['is_owner','access_enabled','annual_leave','leave_used','leave_remaining'] as $key)$u[$key]=(int)$u[$key];unset($u);
+    return $list;
+}
+function hr_summary(string $uid,string $year):array{
+    $items=hr_profiles('a.id=?',[$uid],$year);if(!$items)fail('ইউজার পাওয়া যায়নি।',404);return $items[0];
 }
 function hr_get(array $a): never {
     $year=substr(today(),0,4);$month=$_GET['month']??substr(today(),0,7);
@@ -57,7 +64,7 @@ function hr_get(array $a): never {
     $uid=$a['userId'];$owner=$a['role']==='owner';$target=$uid;
     if(isset($_GET['accountId'])) {$target=id_input($_GET,'accountId');staff_assert_account($a,$target);}
     if(!one('SELECT id FROM od_accounts WHERE id=?',[$target]))fail('ইউজার নেই।',404);
-    $users=[];if($a['canBrowseStaff'])foreach(rows('SELECT id FROM od_accounts ORDER BY is_owner DESC,name') as $u)if(staff_account_allowed($a,$u['id']))$users[]=hr_summary($u['id'],$year);
+    $users=[];if($a['canBrowseStaff'])$users=$a['globalRead']?hr_profiles('1=1',[],$year):hr_profiles('EXISTS(SELECT 1 FROM od_staff_assignments s WHERE s.account_id=a.id AND s.branch_id=?)',[$a['branchId']],$year);
     output(['today'=>today(),'month'=>$month,'year'=>$year,'profile'=>hr_summary($target,$year),'users'=>$users,
       'attendance'=>rows('SELECT * FROM od_attendance WHERE account_id=? AND work_date LIKE ? ORDER BY work_date DESC',[$target,$month.'-%']),
       'payroll'=>rows('SELECT * FROM od_payroll WHERE account_id=? ORDER BY month DESC LIMIT 36',[$target]),

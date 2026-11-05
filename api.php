@@ -6,14 +6,16 @@ require __DIR__.'/office-private/daily.php';
 require __DIR__.'/office-private/people.php';
 require __DIR__.'/office-private/budget.php';
 require __DIR__.'/office-private/staffing.php';
+require __DIR__.'/office-private/storage.php';
 headers_secure();
 try {
     session_boot();
-    people_storage();
-    budget_storage();
-    staff_storage();
+    app_storage();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (($_GET['registration']??'')==='1') output(registration_state());
+        $bootstrap=($_GET['bootstrap']??'')==='1';$access=$bootstrap?registration_state():null;
+        if($bootstrap&&$access['state']!=='approved')output(['access'=>$access]);
+        $view=$bootstrap?strval_input($_GET,'view',20):null;
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
         if (isset($_GET['budget'])) budget_get($a);
@@ -28,11 +30,13 @@ try {
             output(['task'=>$task,'reports'=>rows('SELECT * FROM od_reports WHERE task_id=? ORDER BY date DESC LIMIT 365',[$task['id']]),'comments'=>rows('SELECT * FROM od_comments WHERE task_id=? ORDER BY created_at DESC LIMIT 500',[$task['id']]),'today'=>today()]);
         }
         [$where,$scopeArgs]=staff_task_scope($a);$args=[today(),...$scopeArgs];
-        $tasks=rows("SELECT t.*,COALESCE(m.name,'মালিক') AS assignee_name,(SELECT COUNT(*) FROM od_reports r WHERE r.task_id=t.id AND r.date=?) AS reported_today FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id WHERE $where ORDER BY t.date DESC,t.created_at DESC LIMIT 1000",$args);
+        $tasks=(!$bootstrap||$view==='tasks')?rows("SELECT t.*,COALESCE(m.name,'মালিক') AS assignee_name,(SELECT COUNT(*) FROM od_reports r WHERE r.task_id=t.id AND r.date=?) AS reported_today FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id WHERE $where ORDER BY t.date DESC,t.created_at DESC LIMIT 1000",$args):[];
         foreach($tasks as &$t) $t['reported_today']=(int)$t['reported_today']; unset($t);
-        $members=$owner?rows('SELECT id,email,name,role,view_all,active FROM od_members ORDER BY name'):[];
+        $members=$owner&&(!$bootstrap||in_array($view,['tasks','history'],true))?rows('SELECT id,email,name,role,view_all,active FROM od_members ORDER BY name'):[];
         foreach($members as &$m) { $m['view_all']=(int)$m['view_all']; $m['active']=(int)$m['active']; } unset($m);
-        output(['actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$owner?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[],'limit'=>1000]);
+        $registrations=$owner&&(!$bootstrap||$view==='requests')?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[];
+        $pending=$owner?(int)(one("SELECT COUNT(*) AS total FROM od_registration_requests WHERE status='pending'")['total']??0):0;
+        output(['access'=>$access,'loadedView'=>$view,'pendingRegistrations'=>$pending,'actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>!$bootstrap&&$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner&&(!$bootstrap||$view==='history')?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$registrations,'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
     if ($action==='recovery_request') recovery_request($v);

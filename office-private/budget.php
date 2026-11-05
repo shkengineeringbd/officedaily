@@ -137,9 +137,6 @@ function budget_event_map(array $items): array {
 }
 function budget_get(array $a): never {
     $role=budget_access($a);$view=$_GET['budget']??'list';
-    if($view==='settings'){
-        hr_owner($a);output(['users'=>rows("SELECT a.id,a.name,a.email,a.is_owner,COALESCE(m.role,'') AS work_role,COALESCE(m.active,a.is_owner) AS active,COALESCE(h.access_enabled,1) AS access_enabled,COALESCE(r.role,'') AS budget_role FROM od_accounts a LEFT JOIN od_members m ON m.user_id=a.id LEFT JOIN od_hr_profiles h ON h.account_id=a.id LEFT JOIN od_budget_roles r ON r.account_id=a.id ORDER BY a.is_owner DESC,a.name"),'ready'=>budget_ready(),'history'=>rows('SELECT account_email,role,actor_name,created_at FROM od_budget_role_events ORDER BY sequence DESC LIMIT 100')]);
-    }
     if($view==='detail'){
         $id=budget_uuid($_GET,'id');staff_budget_assert($a,$id);$b=one('SELECT * FROM od_budgets WHERE id=?',[$id]);if(!$b)fail('বাজেট পাওয়া যায়নি।',404);output(['budget'=>budget_shape($b),'events'=>budget_events($id),'role'=>$role,'today'=>today()]);
     }

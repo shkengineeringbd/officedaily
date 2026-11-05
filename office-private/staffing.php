@@ -95,7 +95,7 @@ function staff_action(array $a,array $v,string $action):bool{
  if($action==='staff_branch'){
   hr_owner($a);$name=strval_input($v,'name',100);$id=isset($v['id'])?id_input($v,'id'):uid();
   $active=bool_input($v,'active');$head=bool_input($v,'isHead');
-  transaction(function()use($id,$name,$active,$head){rows('SELECT id FROM od_branches FOR UPDATE');$old=one('SELECT * FROM od_branches WHERE id=?',[$id]);if($old&&(int)$old['is_head']===1&&(!$head||!$active))fail('হেড অফিস বন্ধ করা যাবে না।');if($head&&(!$active||one('SELECT id FROM od_branches WHERE is_head=1 AND id<>?',[$id])))fail('একটি সক্রিয় হেড অফিস থাকতে হবে।');query('INSERT INTO od_branches(id,name,is_head,active) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),active=VALUES(active),is_head=VALUES(is_head)',[$id,$name,$head,$active]);});output(['ok'=>true]);
+  transaction(function()use($id,$name,$active,$head){rows('SELECT id FROM od_branches FOR UPDATE');$old=one('SELECT * FROM od_branches WHERE id=?',[$id]);if($old&&(int)$old['is_head']===1&&(!$head||!$active))fail('হেড অফিস বন্ধ করা যাবে না।');if($head&&(!$active||one('SELECT id FROM od_branches WHERE is_head=1 AND id<>?',[$id])))fail('একটি সক্রিয় হেড অফিস থাকতে হবে।');query('INSERT INTO od_branches(id,name,is_head,active) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),active=VALUES(active),is_head=VALUES(is_head)',[$id,$name,$head,$active]);query('INSERT IGNORE INTO od_budget_branches(budget_id,branch_id) SELECT b.id,r.id FROM od_budgets b JOIN od_branches r ON r.name=b.branch WHERE r.id=?',[$id]);});output(['ok'=>true]);
  }
  if($action==='staff_assign'){
   hr_owner($a);$u=hr_target($v);$branch=id_input($v,'branchId');$post=strval_input($v,'post',20);
