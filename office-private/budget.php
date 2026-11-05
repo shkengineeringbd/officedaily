@@ -150,7 +150,8 @@ function budget_get(array $a): never {
     $stages=$role==='md'?'0,1,2':($role==='cfo'?'1,3':($role==='gm'?'0':'-1'));
     $queue=one("SELECT COUNT(*) AS total FROM od_budgets b WHERE b.status='pending' AND b.stage IN ($stages) AND $scope",$scopeArgs);
     $branchOptions=$a['globalRead']?rows('SELECT id,name FROM od_branches WHERE active=1 ORDER BY name'):rows('SELECT id,name FROM od_branches WHERE id=? AND active=1',[$a['branchId']]);
-    output(['items'=>$items,'total'=>(int)$stats['total'],'amount'=>$stats['amount'],'page'=>$page,'pageSize'=>30,'filters'=>$filters,'branches'=>array_column($branchOptions,'name'),'branchOptions'=>$branchOptions,'role'=>$role,'canConfigure'=>$a['role']==='owner','ready'=>budget_ready(),'queueCount'=>(int)$queue['total'],'today'=>today()]);
+    $filterBranches=$a['globalRead']?rows('SELECT name FROM od_branches ORDER BY name'):rows('SELECT name FROM od_branches WHERE id=?',[$a['branchId']]);
+    output(['items'=>$items,'total'=>(int)$stats['total'],'amount'=>$stats['amount'],'page'=>$page,'pageSize'=>30,'filters'=>$filters,'branches'=>array_column($filterBranches,'name'),'branchOptions'=>$branchOptions,'role'=>$role,'canConfigure'=>$a['role']==='owner','ready'=>budget_ready(),'queueCount'=>(int)$queue['total'],'today'=>today()]);
 }
 function budget_csv_cell(mixed $v): string {
     $s=(string)($v??'');if(preg_match('/^[\s\x{FEFF}]*[=+@\-]/u',$s))$s="'".$s;return $s;
