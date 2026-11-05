@@ -60,7 +60,7 @@ function require_post(): array {
     if ($raw===false || strlen($raw)>6000000) fail('তথ্যের আকার বেশি।',413);
     try { $data=json_decode($raw,true,16,JSON_THROW_ON_ERROR); } catch (JsonException $e) { fail('সঠিক তথ্য দিন।'); }
     if (!is_array($data) || array_is_list($data)) fail('সঠিক তথ্য দিন।');
-    if (strlen($raw)>50000 && ($data['action']??'')!=='profile_submit') fail('তথ্যের আকার বেশি।',413);
+    if (strlen($raw)>50000 && !in_array(($data['action']??''),['profile_submit','chat_send'],true)) fail('তথ্যের আকার বেশি।',413);
     return $data;
 }
 function strval_input(array $v,string $key,int $max=5000,bool $empty=false): string {

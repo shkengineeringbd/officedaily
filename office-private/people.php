@@ -122,6 +122,7 @@ function people_action(array $a,array $v,string $action): bool {
         foreach(['od_attendance','od_leave_requests','od_payroll','od_password_recovery','od_hr_profiles'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
         query('DELETE FROM od_budget_roles WHERE account_id=?',[$id]);
         foreach(['od_identity_files','od_identity_profiles','od_staff_assignments','od_profile_events'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
+        query('DELETE FROM od_chat_files WHERE sender_id=?',[$id]);query('DELETE FROM od_chat_messages WHERE sender_id=?',[$id]);query("UPDATE od_chat_members SET display_name='Former user' WHERE account_id=?",[$id]);
         query('DELETE FROM od_accounts WHERE id=? AND is_owner=0',[$id]);
       });unset($_SESSION['delete_challenge']);return true;
     }

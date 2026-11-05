@@ -6,6 +6,7 @@ require __DIR__.'/office-private/daily.php';
 require __DIR__.'/office-private/people.php';
 require __DIR__.'/office-private/budget.php';
 require __DIR__.'/office-private/staffing.php';
+require __DIR__.'/office-private/chat.php';
 require __DIR__.'/office-private/storage.php';
 headers_secure();
 try {
@@ -18,6 +19,7 @@ try {
         $view=$bootstrap?strval_input($_GET,'view',20):null;
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        if (isset($_GET['chat'])) chat_get($a);
         if (isset($_GET['budget'])) budget_get($a);
         if (isset($_GET['hr'])) hr_get($a);
         if (isset($_GET['workday'])) {
@@ -81,6 +83,7 @@ try {
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(chat_action($a,$v,$action)) output(['ok'=>true]);
     if(staff_action($a,$v,$action)) output(['ok'=>true]);
     if(budget_action($a,$v,$action)) output(['ok'=>true]);
     if(people_action($a,$v,$action)) output(['ok'=>true]);
