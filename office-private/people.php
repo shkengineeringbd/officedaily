@@ -55,9 +55,9 @@ function hr_get(array $a): never {
     $year=substr(today(),0,4);$month=$_GET['month']??substr(today(),0,7);
     if(!is_string($month)||!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)) fail('সঠিক মাস বেছে নিন।');
     $uid=$a['userId'];$owner=$a['role']==='owner';$target=$uid;
-    if(isset($_GET['accountId'])) {if(!$owner && $_GET['accountId']!==$uid)fail('অনুমতি নেই।',403);$target=id_input($_GET,'accountId');}
+    if(isset($_GET['accountId'])) {$target=id_input($_GET,'accountId');staff_assert_account($a,$target);}
     if(!one('SELECT id FROM od_accounts WHERE id=?',[$target]))fail('ইউজার নেই।',404);
-    $users=[];if($owner)foreach(rows('SELECT id FROM od_accounts ORDER BY is_owner DESC,name') as $u)$users[]=hr_summary($u['id'],$year);
+    $users=[];if($a['canBrowseStaff'])foreach(rows('SELECT id FROM od_accounts ORDER BY is_owner DESC,name') as $u)if(staff_account_allowed($a,$u['id']))$users[]=hr_summary($u['id'],$year);
     output(['today'=>today(),'month'=>$month,'year'=>$year,'profile'=>hr_summary($target,$year),'users'=>$users,
       'attendance'=>rows('SELECT * FROM od_attendance WHERE account_id=? AND work_date LIKE ? ORDER BY work_date DESC',[$target,$month.'-%']),
       'payroll'=>rows('SELECT * FROM od_payroll WHERE account_id=? ORDER BY month DESC LIMIT 36',[$target]),
@@ -114,6 +114,7 @@ function people_action(array $a,array $v,string $action): bool {
         query('DELETE FROM od_members WHERE user_id=? OR email=?',[$id,$u['email']]);query('DELETE FROM od_registration_requests WHERE user_id=?',[$id]);
         foreach(['od_attendance','od_leave_requests','od_payroll','od_password_recovery','od_hr_profiles'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
         query('DELETE FROM od_budget_roles WHERE account_id=?',[$id]);
+        foreach(['od_identity_files','od_identity_profiles','od_staff_assignments','od_profile_events'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
         query('DELETE FROM od_accounts WHERE id=? AND is_owner=0',[$id]);
       });unset($_SESSION['delete_challenge']);return true;
     }

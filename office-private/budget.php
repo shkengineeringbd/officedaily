@@ -10,9 +10,10 @@ function budget_storage(): void {
     query("CREATE TABLE IF NOT EXISTS od_budget_role_events (sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, account_id VARCHAR(36) NOT NULL, account_email VARCHAR(254) NOT NULL, role VARCHAR(16) NOT NULL, actor_id VARCHAR(36) NOT NULL, actor_name VARCHAR(100) NOT NULL, created_at VARCHAR(30) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 }
 function budget_role(array $a): ?string {
-    $r=one('SELECT role FROM od_budget_roles WHERE account_id=?',[$a['userId']]);
-    if($r) return $r['role'];
-    return $a['role']==='owner'?'admin':($a['role']==='manager'?'manager':null);
+    $post=$a['post']??null;
+    if(in_array($post,['gm','cfo','md'],true))return $post;
+    if($a['role']==='owner')return 'admin';
+    return $post==='branch_manager'?'manager':null;
 }
 function budget_access(array $a): string {
     $r=budget_role($a);if(!in_array($r,['admin','manager','gm','cfo','md'],true)) fail('বাজেট দেখার অনুমতি নেই।',403);return $r;
@@ -25,7 +26,8 @@ function budget_event(array $a,string $id,string $action,int $stage,string $note
 function budget_shape(array $b): array { $b['code']=budget_code($b);$b['stage']=(int)$b['stage'];$b['serial']=(int)$b['serial'];return $b; }
 function budget_ready(): array {
     $found=['gm'=>false,'cfo'=>false,'md'=>false];
-    foreach(rows("SELECT DISTINCT r.role FROM od_budget_roles r JOIN od_accounts a ON a.id=r.account_id LEFT JOIN od_members m ON m.user_id=a.id LEFT JOIN od_hr_profiles h ON h.account_id=a.id WHERE COALESCE(h.access_enabled,1)=1 AND (a.is_owner=1 OR m.active=1)") as $r) if(array_key_exists($r['role'],$found))$found[$r['role']]=true;
+    foreach(rows("SELECT s.post FROM od_staff_assignments s JOIN od_branches b ON b.id=s.branch_id JOIN od_accounts a ON a.id=s.account_id LEFT JOIN od_members m ON m.user_id=a.id LEFT JOIN od_hr_profiles h ON h.account_id=a.id LEFT JOIN od_identity_profiles p ON p.account_id=a.id WHERE b.is_head=1 AND b.active=1 AND COALESCE(h.access_enabled,1)=1 AND (a.is_owner=1 OR (m.active=1 AND p.status='approved' AND p.branch_id=s.branch_id))") as $r)if(array_key_exists($r['post'],$found))$found[$r['post']]=true;
+    if($found['md'])$found['gm']=true; // MD may provide the GM approval as part of full approval.
     return $found;
 }
 function budget_uuid(array $v,string $key): string {
@@ -41,21 +43,12 @@ function budget_payment(array $v): string {
 }
 function budget_action(array $a,array $v,string $action): bool {
     if(!str_starts_with($action,'budget_'))return false;
-    if($action==='budget_role') {
-        hr_owner($a);$u=hr_target($v);$role=$v['role']??'';
-        if(!in_array($role,['','manager','gm','cfo','md'],true))fail('সঠিক বাজেট ভূমিকা দিন।');
-        transaction(function()use($a,$u,$role){
-            one('SELECT id FROM od_accounts WHERE id=? FOR UPDATE',[$u['id']]);
-            if($role==='')query('DELETE FROM od_budget_roles WHERE account_id=?',[$u['id']]);
-            else query('INSERT INTO od_budget_roles (account_id,role,assigned_at,assigned_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE role=VALUES(role),assigned_at=VALUES(assigned_at),assigned_by=VALUES(assigned_by)',[$u['id'],$role,now(),$a['userId']]);
-            query('INSERT INTO od_budget_role_events (account_id,account_email,role,actor_id,actor_name,created_at) VALUES (?,?,?,?,?,?)',[$u['id'],$u['email'],$role,$a['userId'],$a['name'],now()]);
-        });output(['ok'=>true]);
-    }
+    if($action==='budget_role') { hr_owner($a); fail('পোস্ট ও ব্রাঞ্চ স্টাফ অ্যাক্সেস বিভাগ থেকে নির্ধারণ করুন।',409); }
     $role=budget_access($a);
     if($action==='budget_submit') {
-        $id=budget_uuid($v,'requestId');$name=strval_input($v,'name',100);$branch=strval_input($v,'branch',100);$reason=strval_input($v,'reason',5000);
+        $id=budget_uuid($v,'requestId');$name=strval_input($v,'name',100);$branchId=id_input($v,'branchId');$branchRow=one('SELECT name FROM od_branches WHERE id=? AND active=1',[$branchId]);if(!$branchRow)fail('সক্রিয় ব্রাঞ্চ বেছে নিন।');if(!$a['globalRead']&&$branchId!==$a['branchId'])fail('অন্য ব্রাঞ্চে বাজেট জমা দেওয়ার অনুমতি নেই।',403);$branch=$branchRow['name'];$reason=strval_input($v,'reason',5000);
         $amount=money_input($v,'amount');if((float)$amount<=0)fail('বাজেটের পরিমাণ শূন্যের বেশি হতে হবে।');$payment=budget_payment($v);$method=$v['method'];
-        transaction(function()use($a,$id,$name,$branch,$reason,$amount,$method,$payment,$role){
+        transaction(function()use($a,$id,$name,$branch,$branchId,$reason,$amount,$method,$payment,$role){
             one('SELECT id FROM od_accounts WHERE id=? FOR UPDATE',[$a['userId']]);
             $existing=one('SELECT * FROM od_budgets WHERE id=?',[$id]);
             if($existing){
@@ -64,13 +57,25 @@ function budget_action(array $a,array $v,string $action): bool {
             }
             if(in_array(false,budget_ready(),true))fail('অ্যাডমিনকে আগে সক্রিয় GM, CFO ও MD নির্ধারণ করতে বলুন।',409);
             query('INSERT INTO od_budgets (id,creator_id,applicant_name,applicant_email,branch,reason,amount,method,payment_details,submitted_on,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',[$id,$a['userId'],$name,$a['email'],$branch,$reason,$amount,$method,$payment,today(),now()]);
+            query('INSERT INTO od_budget_branches(budget_id,branch_id) VALUES(?,?)',[$id,$branchId]);
             budget_event($a,$id,'submitted',0,'আবেদন জমা হয়েছে।',$role);
+        });output(['ok'=>true,'id'=>$id]);
+    }
+    if($action==='budget_md_all') {
+        if($role!=='md')fail('শুধু MD একসঙ্গে সব অনুমোদন দিতে পারবেন।',403);
+        $id=budget_uuid($v,'id');$note=strval_input($v,'note',2000,true);$expected=$v['expectedStage']??null;
+        transaction(function()use($a,$id,$note,$expected){
+            $b=one('SELECT * FROM od_budgets WHERE id=? FOR UPDATE',[$id]);staff_budget_assert($a,$id);
+            if(!$b||$b['status']!=='pending'||!is_int($expected)||(int)$b['stage']!==$expected||$expected>2)fail('অনুমোদনের ধাপ বদলেছে।',409);
+            for($i=$expected;$i<3;$i++)budget_event($a,$id,'approved',$i,'MD কর্তৃক একসঙ্গে অনুমোদন — '.['GM ধাপ','CFO ধাপ','MD ধাপ'][$i].($note!==''?' | '.$note:''),'md');
+            query('UPDATE od_budgets SET stage=3 WHERE id=?',[$id]);
         });output(['ok'=>true,'id'=>$id]);
     }
     if($action==='budget_decide'||$action==='budget_release') {
         $id=budget_uuid($v,'id');$expected=$v['expectedStage']??null;if(!is_int($expected)||$expected<0||$expected>3)fail('সঠিক অনুমোদন ধাপ দিন।');
         transaction(function()use($a,$v,$id,$expected,$action){
             $b=one('SELECT * FROM od_budgets WHERE id=? FOR UPDATE',[$id]);if(!$b)fail('বাজেট পাওয়া যায়নি।',404);
+            staff_budget_assert($a,$id);
             $role=budget_access($a);
             if($b['status']!=='pending'||(int)$b['stage']!==$expected)fail('বাজেটের ধাপ বদলেছে। রিফ্রেশ করে দেখুন।',409);
             if($role!==budget_stage_role($expected))fail('এই ধাপে অনুমোদন বা রিলিজের অনুমতি নেই।',403);
@@ -136,17 +141,19 @@ function budget_get(array $a): never {
         hr_owner($a);output(['users'=>rows("SELECT a.id,a.name,a.email,a.is_owner,COALESCE(m.role,'') AS work_role,COALESCE(m.active,a.is_owner) AS active,COALESCE(h.access_enabled,1) AS access_enabled,COALESCE(r.role,'') AS budget_role FROM od_accounts a LEFT JOIN od_members m ON m.user_id=a.id LEFT JOIN od_hr_profiles h ON h.account_id=a.id LEFT JOIN od_budget_roles r ON r.account_id=a.id ORDER BY a.is_owner DESC,a.name"),'ready'=>budget_ready(),'history'=>rows('SELECT account_email,role,actor_name,created_at FROM od_budget_role_events ORDER BY sequence DESC LIMIT 100')]);
     }
     if($view==='detail'){
-        $id=budget_uuid($_GET,'id');$b=one('SELECT * FROM od_budgets WHERE id=?',[$id]);if(!$b)fail('বাজেট পাওয়া যায়নি।',404);output(['budget'=>budget_shape($b),'events'=>budget_events($id),'role'=>$role,'today'=>today()]);
+        $id=budget_uuid($_GET,'id');staff_budget_assert($a,$id);$b=one('SELECT * FROM od_budgets WHERE id=?',[$id]);if(!$b)fail('বাজেট পাওয়া যায়নি।',404);output(['budget'=>budget_shape($b),'events'=>budget_events($id),'role'=>$role,'today'=>today()]);
     }
     if($view==='csv'||$view==='print')budget_export($a,$view);
     if($view!=='list')fail('সঠিক বাজেট বিভাগ দিন।');
-    [$where,$args,$filters]=budget_filters($_GET);
+    [$where,$args,$filters]=budget_filters($_GET);[$scope,$scopeArgs]=staff_budget_scope($a);$where.=' AND '.$scope;$args=[...$args,...$scopeArgs];
     $page=filter_var($_GET['page']??1,FILTER_VALIDATE_INT);if($page===false||$page<1||$page>10000000)fail('সঠিক পৃষ্ঠা দিন।');$offset=($page-1)*30;
     $stats=one('SELECT COUNT(*) AS total,COALESCE(SUM(b.amount),0) AS amount FROM od_budgets b WHERE '.$where,$args);
     $items=array_map('budget_shape',rows('SELECT b.* FROM od_budgets b WHERE '.$where.' ORDER BY b.serial DESC LIMIT 30 OFFSET '.$offset,$args));
-    $queue=one("SELECT COUNT(*) AS total FROM od_budgets WHERE status='pending' AND stage=?",[array_search($role,['gm','cfo','md'],true)===false?-1:array_search($role,['gm','cfo','md'],true)]);
-    if($role==='cfo')$queue=one("SELECT COUNT(*) AS total FROM od_budgets WHERE status='pending' AND stage IN (1,3)");
-    output(['items'=>$items,'total'=>(int)$stats['total'],'amount'=>$stats['amount'],'page'=>$page,'pageSize'=>30,'filters'=>$filters,'branches'=>array_column(rows('SELECT DISTINCT branch FROM od_budgets ORDER BY branch'),'branch'),'role'=>$role,'canConfigure'=>$a['role']==='owner','ready'=>budget_ready(),'queueCount'=>(int)$queue['total'],'today'=>today()]);
+    [$scope,$scopeArgs]=staff_budget_scope($a);
+    $stages=$role==='md'?'0,1,2':($role==='cfo'?'1,3':($role==='gm'?'0':'-1'));
+    $queue=one("SELECT COUNT(*) AS total FROM od_budgets b WHERE b.status='pending' AND b.stage IN ($stages) AND $scope",$scopeArgs);
+    $branchOptions=$a['globalRead']?rows('SELECT id,name FROM od_branches WHERE active=1 ORDER BY name'):rows('SELECT id,name FROM od_branches WHERE id=? AND active=1',[$a['branchId']]);
+    output(['items'=>$items,'total'=>(int)$stats['total'],'amount'=>$stats['amount'],'page'=>$page,'pageSize'=>30,'filters'=>$filters,'branches'=>array_column($branchOptions,'name'),'branchOptions'=>$branchOptions,'role'=>$role,'canConfigure'=>$a['role']==='owner','ready'=>budget_ready(),'queueCount'=>(int)$queue['total'],'today'=>today()]);
 }
 function budget_csv_cell(mixed $v): string {
     $s=(string)($v??'');if(preg_match('/^[\s\x{FEFF}]*[=+@\-]/u',$s))$s="'".$s;return $s;
@@ -154,8 +161,8 @@ function budget_csv_cell(mixed $v): string {
 function budget_payment_text(array $b): string { $p=json_decode($b['payment_details'],true);return implode(' | ',array_values($p)); }
 function budget_event_text(array $e): string {return strtoupper($e['actor_role']).' '.$e['action'].' — '.$e['actor_name'].' <'.$e['actor_email'].'> — '.(new DateTimeImmutable($e['created_at']))->setTimezone(new DateTimeZone('Asia/Dhaka'))->format('Y-m-d H:i:s').' Asia/Dhaka — '.$e['note'];}
 function budget_export(array $a,string $format): never {
-    budget_access($a);[$where,$args,$filters]=budget_filters($_GET);
-    if(isset($_GET['id'])){$id=budget_uuid($_GET,'id');$where.=' AND b.id=?';$args[]=$id;if(!one('SELECT id FROM od_budgets WHERE id=?',[$id]))fail('বাজেট পাওয়া যায়নি।',404);}
+    budget_access($a);[$where,$args,$filters]=budget_filters($_GET);[$scope,$scopeArgs]=staff_budget_scope($a);$where.=' AND '.$scope;$args=[...$args,...$scopeArgs];
+    if(isset($_GET['id'])){$id=budget_uuid($_GET,'id');staff_budget_assert($a,$id);$where.=' AND b.id=?';$args[]=$id;if(!one('SELECT id FROM od_budgets WHERE id=?',[$id]))fail('বাজেট পাওয়া যায়নি।',404);}
     db()->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');db()->beginTransaction();
     if($format==='csv'){
         header('Content-Type: text/csv; charset=utf-8');header('Content-Disposition: attachment; filename="budget-records-'.today().'.csv"');

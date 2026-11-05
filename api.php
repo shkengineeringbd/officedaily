@@ -5,13 +5,16 @@ require __DIR__.'/office-private/bootstrap.php';
 require __DIR__.'/office-private/daily.php';
 require __DIR__.'/office-private/people.php';
 require __DIR__.'/office-private/budget.php';
+require __DIR__.'/office-private/staffing.php';
 headers_secure();
 try {
     session_boot();
     people_storage();
     budget_storage();
+    staff_storage();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (($_GET['registration']??'')==='1') output(registration_state());
+        if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
         if (isset($_GET['budget'])) budget_get($a);
         if (isset($_GET['hr'])) hr_get($a);
@@ -24,13 +27,12 @@ try {
             $task=visible($a,id_input($_GET,'task'));
             output(['task'=>$task,'reports'=>rows('SELECT * FROM od_reports WHERE task_id=? ORDER BY date DESC LIMIT 365',[$task['id']]),'comments'=>rows('SELECT * FROM od_comments WHERE task_id=? ORDER BY created_at DESC LIMIT 500',[$task['id']]),'today'=>today()]);
         }
-        $where='1=1'; $args=[today()];
-        if (!$owner && $a['viewAll']!==1) { $where='(t.assignee_id=? OR t.assignee_id IN (SELECT target_id FROM od_grants WHERE viewer_id=?))'; array_push($args,$a['id'],$a['id']); }
+        [$where,$scopeArgs]=staff_task_scope($a);$args=[today(),...$scopeArgs];
         $tasks=rows("SELECT t.*,COALESCE(m.name,'মালিক') AS assignee_name,(SELECT COUNT(*) FROM od_reports r WHERE r.task_id=t.id AND r.date=?) AS reported_today FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id WHERE $where ORDER BY t.date DESC,t.created_at DESC LIMIT 1000",$args);
         foreach($tasks as &$t) $t['reported_today']=(int)$t['reported_today']; unset($t);
         $members=$owner?rows('SELECT id,email,name,role,view_all,active FROM od_members ORDER BY name'):[];
         foreach($members as &$m) { $m['view_all']=(int)$m['view_all']; $m['active']=(int)$m['active']; } unset($m);
-        output(['actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>grants($a),'audit'=>$owner?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$owner?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[],'limit'=>1000]);
+        output(['actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$owner?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[],'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
     if ($action==='recovery_request') recovery_request($v);
@@ -73,7 +75,9 @@ try {
         $name=strval_input($v,'name',100);
         query("INSERT INTO od_registration_requests (id,user_id,email,name,status,created_at) VALUES (?,?,?,?,'pending',?) ON DUPLICATE KEY UPDATE name=VALUES(name)",[uid(),$u['id'],$u['email'],$name,$n]); output(['ok'=>true]);
     }
+    if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(staff_action($a,$v,$action)) output(['ok'=>true]);
     if(budget_action($a,$v,$action)) output(['ok'=>true]);
     if(people_action($a,$v,$action)) output(['ok'=>true]);
     if ($action==='daily_work') { daily_save($a,$v); output(['ok'=>true]); }
@@ -81,8 +85,8 @@ try {
     if (in_array($action,['member','task','status','approve','reject'],true) && $a['role']!=='owner') fail('শুধু মালিক এই পরিবর্তন করতে পারেন।',403);
     if ($action==='approve' || $action==='reject') {
         $rid=id_input($v,'requestId'); $targets=$action==='approve'?targets_input($v):[];
-        $name=$action==='approve'?strval_input($v,'name',100):''; $role=$action==='approve'?role_input($v):'officer'; $all=$action==='approve'?bool_input($v,'viewAll'):0;
-        transaction(function() use($action,$rid,$targets,$name,$role,$all,$a,$n) {
+        $name=$action==='approve'?strval_input($v,'name',100):''; $role=$action==='approve'&&($v['post']??'')==='branch_manager'?'manager':'officer'; $all=$action==='approve'?bool_input($v,'viewAll'):0;
+        transaction(function() use($v,$action,$rid,$targets,$name,$role,$all,$a,$n) {
             $r=one('SELECT * FROM od_registration_requests WHERE id=? FOR UPDATE',[$rid]);
             if (!$r) fail('রেজিস্ট্রেশনের অনুরোধ পাওয়া যায়নি।',404);
             if ($r['status']==='approved') fail('অনুরোধটি ইতিমধ্যে অনুমোদিত। কর্মকর্তার অনুমতি থেকে পরিবর্তন করুন।',409);
@@ -94,7 +98,8 @@ try {
                 if ($m && $m['user_id'] && $m['user_id']!==$r['user_id']) fail('অ্যাকাউন্ট মেলেনি।',409);
                 $mid=$m['id']??uid();
                 query('INSERT INTO od_members (id,email,user_id,name,role,view_all,active) VALUES (?,?,?,?,?,?,1) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),name=VALUES(name),role=VALUES(role),view_all=VALUES(view_all),active=1',[$mid,$r['email'],$r['user_id'],$name,$role,$all]);
-                save_grants($mid,$targets);
+                staff_assign($a,$r['user_id'],id_input($v,'branchId'),strval_input($v,'post',20));
+                save_grants($mid,[]);
             }
             audit($a,$action==='approve'?'রেজিস্ট্রেশন অনুমোদন':'রেজিস্ট্রেশন প্রত্যাখ্যান',$rid);
         }); output(['ok'=>true]);

@@ -17,12 +17,8 @@ function daily_storage(): void {
 
 function daily_list(array $actor, string $date): array {
     daily_storage();
-    $scope = '1=1';
-    $params = [$date];
-    if ($actor['role'] !== 'owner' && $actor['viewAll'] !== 1) {
-        $scope = '(t.assignee_id=? OR t.assignee_id IN (SELECT target_id FROM od_grants WHERE viewer_id=?))';
-        array_push($params, $actor['id'], $actor['id']);
-    }
+    [$scope,$scopeArgs]=staff_task_scope($actor);
+    $params=[$date,...$scopeArgs];
     $params[] = $date;
     return rows("SELECT t.id,t.assignee_id,t.date AS origin,
         COALESCE(m.name,'মালিক') AS assignee_name,
@@ -78,3 +74,4 @@ function daily_save(array $actor,array $input): void {
         audit($actor,'দৈনিক আপডেট',$date.' '.$id);
     });
 }
+

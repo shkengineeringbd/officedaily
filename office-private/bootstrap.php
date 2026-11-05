@@ -56,10 +56,11 @@ function require_post(): array {
     if (($_SERVER['HTTP_ORIGIN']??'')!==origin(config()['app_url'])) fail('অনুরোধটি অনুমোদিত নয়।',403);
     if (!hash_equals($_SESSION['csrf'], $_SERVER['HTTP_X_CSRF_TOKEN']??'')) fail('সেশন শেষ হয়েছে। পৃষ্ঠা রিফ্রেশ করুন।',403);
     if (!str_contains($_SERVER['CONTENT_TYPE']??'','application/json')) fail('JSON প্রয়োজন।',415);
-    $raw=file_get_contents('php://input',false,null,0,50001);
-    if ($raw===false || strlen($raw)>50000) fail('তথ্যের আকার বেশি।',413);
+    $raw=file_get_contents('php://input',false,null,0,6000001);
+    if ($raw===false || strlen($raw)>6000000) fail('তথ্যের আকার বেশি।',413);
     try { $data=json_decode($raw,true,16,JSON_THROW_ON_ERROR); } catch (JsonException $e) { fail('সঠিক তথ্য দিন।'); }
     if (!is_array($data) || array_is_list($data)) fail('সঠিক তথ্য দিন।');
+    if (strlen($raw)>50000 && ($data['action']??'')!=='profile_submit') fail('তথ্যের আকার বেশি।',413);
     return $data;
 }
 function strval_input(array $v,string $key,int $max=5000,bool $empty=false): string {
@@ -86,11 +87,11 @@ function account(): ?array {
     return $u;
 }
 function require_account(): array { $u=account(); if (!$u) fail('লগইন করুন।',401); return $u; }
-function actor(): array {
-    $u=require_account(); if(function_exists('access_enabled')&&!access_enabled($u['id']))fail('অ্যাকাউন্টের অ্যাক্সেস বন্ধ রয়েছে।',403); if ((int)$u['is_owner']===1) return ['id'=>'owner','userId'=>$u['id'],'email'=>$u['email'],'name'=>$u['name'],'role'=>'owner','viewAll'=>1];
+function actor(bool $verified=true): array {
+    $u=require_account(); if(function_exists('access_enabled')&&!access_enabled($u['id']))fail('অ্যাকাউন্টের অ্যাক্সেস বন্ধ রয়েছে।',403); if ((int)$u['is_owner']===1) return staff_decorate(['id'=>'owner','userId'=>$u['id'],'email'=>$u['email'],'name'=>$u['name'],'role'=>'owner','viewAll'=>1],$verified);
     $m=one('SELECT * FROM od_members WHERE user_id=? AND email=? AND active=1',[$u['id'],$u['email']]);
     if (!$m) fail('এই অ্যাপে আপনার অ্যাক্সেস দেওয়া হয়নি।',403);
-    return ['id'=>$m['id'],'userId'=>$u['id'],'email'=>$u['email'],'name'=>$m['name'],'role'=>$m['role'],'viewAll'=>(int)$m['view_all']];
+    return staff_decorate(['id'=>$m['id'],'userId'=>$u['id'],'email'=>$u['email'],'name'=>$m['name'],'role'=>$m['role'],'viewAll'=>(int)$m['view_all']],$verified);
 }
 function registration_state(): array {
     $u=account(); if (!$u) return ['state'=>'signed_out','user'=>null];
@@ -98,15 +99,16 @@ function registration_state(): array {
     if(function_exists('access_enabled')&&!access_enabled($u['id']))return ['state'=>'disabled','user'=>$user];
     if ((int)$u['is_owner']===1) return ['state'=>'approved','user'=>$user];
     $m=one('SELECT active FROM od_members WHERE user_id=?',[$u['id']]);
+    if($m && (int)$m['active']===1 && function_exists('staff_verified') && !staff_verified($u['id']))return ['state'=>'profile_required','user'=>$user];
     if ($m) return ['state'=>(int)$m['active']===1?'approved':'disabled','user'=>$user];
     $r=one('SELECT id,status,created_at,reviewed_at FROM od_registration_requests WHERE user_id=?',[$u['id']]);
     return ['state'=>$r ? ($r['status']==='approved'?'disabled':$r['status']) : 'new','user'=>$user,'request'=>$r];
 }
 function grants(array $a): array { return array_column(rows('SELECT target_id FROM od_grants WHERE viewer_id=?',[$a['id']]),'target_id'); }
 function visible(array $a,string $taskId): array {
-    $t=one('SELECT * FROM od_tasks WHERE id=?',[$taskId]);
-    if (!$t || !($a['role']==='owner' || $a['id']===$t['assignee_id'] || $a['viewAll']===1 || in_array($t['assignee_id'],grants($a),true))) fail('কাজটি পাওয়া যায়নি।',404);
-    return $t;
+    [$scope,$args]=staff_task_scope($a);
+    $t=one('SELECT t.* FROM od_tasks t WHERE t.id=? AND '.$scope,[$taskId,...$args]);
+    if(!$t)fail('কাজটি পাওয়া যায়নি।',404);return $t;
 }
 function audit(array $a,string $action,string $target): void { query('INSERT INTO od_audit (id,actor_id,actor_user_id,action,target,created_at) VALUES (?,?,?,?,?,?)',[uid(),$a['id'],$a['userId'],$action,$target,now()]); }
 function save_grants(string $mid,array $targets): void { query('DELETE FROM od_grants WHERE viewer_id=?',[$mid]); foreach ($targets as $t) query('INSERT INTO od_grants (id,viewer_id,target_id) VALUES (?,?,?)',[uid(),$mid,$t]); }
