@@ -37,5 +37,16 @@ function inbox_get(array $actor): never {
             JOIN od_accounts a ON a.id=l.account_id LEFT JOIN od_staff_assignments s ON s.account_id=a.id
             WHERE l.status='pending' AND l.account_id<>? AND $where ORDER BY l.created_at LIMIT 100",$global ? [$actor['userId']] : [$actor['userId'],$actor['branchId']]);
     }
-    output(['budgets'=>$budgets,'returned'=>$returned,'leaves'=>$leaves]);
+    $uid = $actor['userId'];
+    $chat = one("SELECT COUNT(*) AS total FROM od_chat_messages m JOIN od_chat_rooms r ON r.id=m.room_id
+        LEFT JOIN od_chat_members me ON me.room_id=r.id AND me.account_id=?
+        WHERE (r.kind='office' OR me.account_id IS NOT NULL) AND m.sender_id<>? AND m.seq>COALESCE(me.last_read_seq,0)",[$uid,$uid]);
+    $days = (int)(one("SELECT meta_value FROM od_app_meta WHERE meta_key='approval_due_days'")['meta_value']??0);
+    if ($days > 0) {
+        foreach ($budgets as &$budget) $budget['due_on']=(new DateTimeImmutable($budget['submitted_on']))->modify('+'.$days.' days')->format('Y-m-d');
+        unset($budget);
+        foreach ($leaves as &$leave) $leave['due_on']=(new DateTimeImmutable($leave['created_at']))->setTimezone(new DateTimeZone('Asia/Dhaka'))->modify('+'.$days.' days')->format('Y-m-d');
+        unset($leave);
+    }
+    output(['budgets'=>$budgets,'returned'=>$returned,'leaves'=>$leaves,'unreadChat'=>(int)$chat['total'],'dueDays'=>$days,'canConfigure'=>$actor['role']==='owner']);
 }
