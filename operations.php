@@ -20,6 +20,7 @@ session_boot();
         <h1>অফিস পরিচালনা</h1>
         <p id="operations-status" role="status"></p>
         <section id="operations-notices" class="panel" hidden></section>
+        <section id="operations-releases" class="panel" hidden></section>
         <section id="operations-access" class="panel" hidden></section>
     </main>
     <script type="module" src="assets/operations.js"></script>
