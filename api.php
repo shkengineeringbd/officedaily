@@ -13,6 +13,9 @@ require __DIR__.'/office-private/releases.php';
 require __DIR__.'/office-private/finance.php';
 require __DIR__.'/office-private/insights.php';
 require __DIR__.'/office-private/backup.php';
+require __DIR__.'/office-private/payslip.php';
+require __DIR__.'/office-private/mfa.php';
+require __DIR__.'/office-private/attendance-import.php';
 headers_secure();
 try {
     session_boot();
@@ -60,6 +63,8 @@ try {
         if (!password_verify($password,$hash) || !$u) fail('ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।',401);
         if (password_needs_rehash($u['password_hash'],PASSWORD_DEFAULT)) query('UPDATE od_accounts SET password_hash=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),$u['id']]);
         if(!access_enabled($u['id'])) fail('অ্যাকাউন্টের অ্যাক্সেস বন্ধ রয়েছে। অ্যাডমিনের সঙ্গে যোগাযোগ করুন।',403);
+        if (one('SELECT account_id FROM od_mfa WHERE account_id=?',[$u['id']])&&!array_key_exists('otp',$v)) output(['ok'=>false,'mfaRequired'=>true],428);
+        mfa_check($u['id'],$v['otp']??null);
         sign_in($u); output(['ok'=>true]);
     }
     if ($action==='signup') {
@@ -90,6 +95,8 @@ try {
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(attendance_import($a,$v,$action)) output(['ok'=>true]);
+    if(mfa_action($a,$v,$action)) output(['ok'=>true]);
     if(backup_action($a,$v,$action)) output(['ok'=>true]);
     if(finance_action($a,$v,$action)) output(['ok'=>true]);
     if(release_history_action($a,$v,$action)) output(['ok'=>true]);
