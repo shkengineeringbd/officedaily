@@ -20,6 +20,9 @@ session_boot();
         <h1>অফিস পরিচালনা</h1>
         <p id="operations-status" role="status"></p>
         <section id="operations-notices" class="panel" hidden></section>
+        <section id="operations-inbox" class="panel" hidden></section>
+        <section id="operations-insights" class="panel" hidden></section>
+        <section id="operations-finance" class="panel" hidden></section>
         <section id="operations-releases" class="panel" hidden></section>
         <section id="operations-access" class="panel" hidden></section>
     </main>
