@@ -24,6 +24,7 @@ session_boot();
         <section id="operations-insights" class="panel" hidden></section>
         <section id="operations-finance" class="panel" hidden></section>
         <section id="operations-releases" class="panel" hidden></section>
+        <section id="operations-mfa" class="panel" hidden></section>
         <section id="operations-access" class="panel" hidden></section>
     </main>
     <script type="module" src="assets/operations.js"></script>
