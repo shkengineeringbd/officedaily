@@ -20,7 +20,8 @@ function backup_zip(string $password): string {
             $file = tmpfile();
             if (!$file) fail('ব্যাকআপ লেখা যায়নি।',503);
             $tables[] = [$table,$file];
-            if (fwrite($file,json_encode(['schema'=>$schema],JSON_THROW_ON_ERROR)."\n")===false) fail('ব্যাকআপ লেখা যায়নি।',503);
+            $line = json_encode(['schema'=>$schema],JSON_THROW_ON_ERROR)."\n";
+            if (fwrite($file,$line)!==strlen($line)) fail('ব্যাকআপ লেখা যায়নি।',503);
             $query = query('SELECT * FROM `'.$table.'`');
             while ($record = $query->fetch()) {
                 $line = json_encode(array_map(fn($value)=>$value === null ? null : base64_encode((string)$value),$record),JSON_THROW_ON_ERROR)."\n";
