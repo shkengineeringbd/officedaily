@@ -102,6 +102,79 @@ async function renderNotices() {
     }
 }
 
+function parseAttendanceCsv(text) {
+    const rows = [];
+    let row = [];
+    let fieldValue = '';
+    let quoted = false;
+    let afterQuote = false;
+    const csv = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    for (let i = 0; i <= csv.length; i++) {
+        const char = csv[i] ?? '\n';
+        if (quoted) {
+            if (char === '"' && csv[i + 1] === '"') {
+                fieldValue += '"';
+                i++;
+            } else if (char === '"') {
+                quoted = false;
+                afterQuote = true;
+            } else fieldValue += char;
+        } else if (char === ',' || char === '\n') {
+            row.push(fieldValue);
+            fieldValue = '';
+            afterQuote = false;
+            if (char === '\n') {
+                if (row.some(Boolean)) rows.push(row);
+                row = [];
+            }
+        } else if (char === '"' && !fieldValue && !afterQuote) quoted = true;
+        else {
+            if (afterQuote || char === '"') throw new Error('CSV ফাইলের উদ্ধৃতি ঠিক করুন।');
+            fieldValue += char;
+        }
+    }
+    if (quoted || rows.shift()?.map(value => value.trim().toLowerCase()).join(',') !== 'email,date,status,note') {
+        throw new Error('CSV-এর প্রথম সারি দিন: email,date,status,note');
+    }
+    if (!rows.length || rows.length > 200 || rows.some(row => row.length !== 4)) throw new Error('সঠিক চার কলামে ১ থেকে ২০০টি রেকর্ড দিন।');
+    return rows.map(([email,date,status,note]) => ({ email,date,status,note }));
+}
+
+function importForm() {
+    const section = element('section');
+    const form = element('form');
+    const file = element('input');
+    file.type = 'file';
+    file.accept = '.csv,text/csv';
+    file.required = true;
+    section.append(element('h3', 'হাজিরা আমদানি'), element('p', 'Excel থেকে CSV UTF-8 করে সেভ করুন। কলাম রাখুন email, date, status, note। তারিখ YYYY-MM-DD।'));
+    field(form, 'CSV ফাইল', file);
+    const preview = element('div');
+    file.addEventListener('change', () => preview.replaceChildren());
+    saveForm(form, 'প্রিভিউ দেখুন', async () => {
+        preview.replaceChildren();
+        const selected = file.files[0];
+        if (selected.size > 40000) throw new Error('একবারে ছোট CSV ফাইল দিন।');
+        const records = parseAttendanceCsv(await selected.text());
+        const result = await request('', { action: 'attendance_import', records, apply: false });
+        for (const entry of result.rows) {
+            const line = element('p', [entry.row, entry.email, entry.date, entry.error || 'ঠিক আছে'].join(' · '));
+            if (entry.error) line.style.color = '#a11a23';
+            preview.append(line);
+        }
+        if (result.valid === records.length) {
+            const confirm = element('form');
+            saveForm(confirm, 'নতুন হাজিরা আমদানি করুন', async () => {
+                await request('', { action: 'attendance_import', records, apply: true });
+                preview.replaceChildren(element('p', records.length + 'টি রেকর্ড আমদানি হয়েছে।'));
+            });
+            preview.append(confirm);
+        }
+    });
+    section.append(form, preview);
+    return section;
+}
+
 function backupForm() {
     const form = element('form');
     const password = element('input');
@@ -157,7 +230,7 @@ async function renderAccess() {
         grants.set(savedKey, savedLevel);
         update();
     });
-    section.replaceChildren(element('h2', 'অপশনের অ্যাক্সেস'), data.users.length ? form : element('p', 'কোনো সক্রিয় ইউজার নেই।'), backupForm());
+    section.replaceChildren(element('h2', 'অপশনের অ্যাক্সেস'), data.users.length ? form : element('p', 'কোনো সক্রিয় ইউজার নেই।'), backupForm(), importForm());
     section.hidden = false;
 }
 
@@ -326,13 +399,23 @@ async function renderInbox() {
     const section = document.querySelector('#operations-inbox');
     section.replaceChildren(element('h2', 'অনুমোদনের ইনবক্স'));
     section.hidden = false;
+    section.append(element('p', 'অপঠিত চ্যাট · ' + data.unreadChat));
+    if (data.canConfigure) {
+        const form = element('form');
+        releaseField(form,'days','অনুমোদনের সময়সীমা (ক্যালেন্ডার দিন, ০ দিলে বন্ধ)',String(data.dueDays),'number');
+        saveForm(form,'সময়সীমা সংরক্ষণ',async () => {
+            await request('', { action: 'operations_due_days', days: Number(new FormData(form).get('days')) });
+            await renderInbox();
+        });
+        section.append(form);
+    }
     for (const [title, entries] of [['বাজেট অপেক্ষায়', data.budgets], ['ছুটি অপেক্ষায়', data.leaves], ['প্রত্যাখ্যাত বাজেট', data.returned]]) {
         section.append(element('h3', title + ' · ' + entries.length));
         for (const entry of entries) {
             const label = entry.name ? entry.name + ' · ' + entry.start_date + ' থেকে ' + entry.end_date
                 : 'BR-' + String(entry.serial).padStart(6, '0') + ' · ' + entry.branch + ' · ' + entry.reason + ' · ' + entry.submitted_on;
             const article = element('article');
-            article.append(element('p', label));
+            article.append(element('p', label + (entry.due_on ? ' · শেষ তারিখ ' + entry.due_on : '')));
             if (entry.name) for (const [decision, text] of [['approved', 'অনুমোদন'], ['rejected', 'প্রত্যাখ্যান']]) {
                 const form = element('form');
                 saveForm(form, text, async () => {
@@ -368,8 +451,43 @@ async function renderInsights(month = new Date(Date.now() + 6 * 3600000).toISOSt
     }
 }
 
+async function renderMfa() {
+    const data = await request('mfa');
+    const section = document.querySelector('#operations-mfa');
+    section.replaceChildren(element('h2', 'অথেনটিকেটর সুরক্ষা'));
+    section.hidden = false;
+    if (data.enabled) {
+        section.append(element('p', 'MFA চালু আছে।'));
+        return;
+    }
+    const form = element('form');
+    const password = element('input');
+    password.type = 'password';
+    password.autocomplete = 'current-password';
+    password.required = true;
+    field(form, 'বর্তমান পাসওয়ার্ড', password);
+    saveForm(form, 'MFA সেটআপ শুরু', async () => {
+        const setup = await request('', { action: 'mfa_start', password: password.value });
+        const confirm = element('form');
+        confirm.append(element('p', 'অথেনটিকেটর অ্যাপে সময়ভিত্তিক অ্যাকাউন্ট যোগ করে এই কী দিন।'));
+        confirm.append(element('code', setup.secret));
+        const code = element('input');
+        code.required = true;
+        code.pattern = '[0-9]{6}';
+        code.inputMode = 'numeric';
+        code.autocomplete = 'one-time-code';
+        field(confirm, 'ছয় অঙ্কের কোড', code);
+        saveForm(confirm, 'MFA চালু করুন', async () => {
+            await request('', { action: 'mfa_enable', code: code.value });
+            await renderMfa();
+        });
+        form.replaceWith(confirm);
+    });
+    section.append(form);
+}
+
 if (status) {
-    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases(), renderFinance(), renderInbox(), renderInsights()]);
+    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases(), renderFinance(), renderInbox(), renderInsights(), renderMfa()]);
     const failure = outcomes.find(result => result.status === 'rejected' && result.reason.status !== 403);
     if (failure) status.textContent = failure.reason.message;
     else if (outcomes.every(result => result.status === 'rejected')) status.textContent = 'এই বিভাগে আপনার অ্যাক্সেস নেই।';
