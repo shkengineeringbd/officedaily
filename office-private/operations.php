@@ -56,6 +56,9 @@ function office_may_edit(array $actor, string $module, string $account): bool {
 
 function operations_get(array $actor): never {
     $view = $_GET['operations'] ?? '';
+    if ($view === 'insights') insights_get($actor);
+    if ($view === 'inbox') inbox_get($actor);
+    if ($view === 'finance') finance_get($actor);
     if ($view === 'releases') release_overview($actor);
     if ($view === 'access') {
         hr_owner($actor);
