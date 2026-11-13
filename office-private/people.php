@@ -206,7 +206,7 @@ function people_action(array $a,array $v,string $action): bool {
               $original['other_allowance']!==$o||$original['deductions']!==$d)fail('বেতন তালিকা পাঠানো হয়েছে। চূড়ান্ত বেতনে শুধু পেমেন্ট স্ট্যাটাস ও মন্তব্য বদলানো যাবে।',409);
           }
         }
-query('INSERT INTO od_payroll (account_id,month,basic_salary,medical_allowance,other_allowance,deductions,net_salary,payment_status,note,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE basic_salary=VALUES(basic_salary),medical_allowance=VALUES(medical_allowance),other_allowance=VALUES(other_allowance),deductions=VALUES(deductions),net_salary=VALUES(net_salary),payment_status=VALUES(payment_status),note=VALUES(note),updated_at=VALUES(updated_at)',[$u['id'],$month,$b,$m,$o,$d,$net,$state,$note,now()]);
+        query('INSERT INTO od_payroll (account_id,month,basic_salary,medical_allowance,other_allowance,deductions,net_salary,payment_status,note,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE basic_salary=VALUES(basic_salary),medical_allowance=VALUES(medical_allowance),other_allowance=VALUES(other_allowance),deductions=VALUES(deductions),net_salary=VALUES(net_salary),payment_status=VALUES(payment_status),note=VALUES(note),updated_at=VALUES(updated_at)',[$u['id'],$month,$b,$m,$o,$d,$net,$state,$note,now()]);
         audit($a,'বেতনের রেকর্ড',$month.' '.$u['email']);
       });return true;
     }
