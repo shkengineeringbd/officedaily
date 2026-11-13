@@ -39,7 +39,7 @@ function finance_head(array $actor): bool {
 }
 
 function finance_get(array $actor): never {
-    $head = finance_head($actor);
+    $head = finance_head($actor) && office_access($actor,'payroll') > 0;
     $manager = $actor['manageBranch'] && office_access($actor,'payroll') > 0;
     if (!$head && !$manager) fail('এই বিভাগের অনুমতি নেই।',403);
     $month = finance_month($_GET);
@@ -80,6 +80,7 @@ function finance_action(array $actor, array $input, string $action): bool {
         return true;
     }
     if (!$head) fail('হেড অফিসের অনুমতি প্রয়োজন।',403);
+    if ($action !== 'finance_settle' && !office_access($actor,'payroll')) fail('বেতনের অ্যাক্সেস নেই।',403);
     if ($action === 'finance_settle') {
         if ($actor['role'] !== 'owner' && $actor['post'] !== 'cfo') fail('বাজেট নিষ্পত্তির অনুমতি নেই।',403);
         $id = budget_uuid($input,'id');
