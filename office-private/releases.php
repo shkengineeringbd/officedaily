@@ -94,6 +94,7 @@ function release_history_action(array $actor, array $input, string $action): boo
             query('UPDATE od_budgets SET released_on=?,release_reference=? WHERE id=?', [$date,$reference,$id]);
             budget_event($actor,$id,'release_edit',4,$budget['released_on'].' / '.$budget['release_reference'].' → '.$date.' / '.$reference.' | '.$note,'admin');
         } else {
+            if (one('SELECT budget_id FROM od_budget_settlements WHERE budget_id=?',[$id])) fail('নিষ্পত্তি করা বাজেট বাতিল করা যাবে না।',409);
             if ($last) query('UPDATE od_release_installments SET voided=1 WHERE id=?', [$last['id']]);
             query("UPDATE od_budgets SET status='pending',stage=3,released_on=NULL,release_reference=NULL WHERE id=?", [$id]);
             budget_event($actor,$id,'release_void',4,$budget['released_on'].' / '.$budget['release_reference'].' | '.$note,'admin');
@@ -106,11 +107,12 @@ function release_history_action(array $actor, array $input, string $action): boo
 function release_overview(array $actor): never {
     if (!$actor['globalRead']) fail('এই বিভাগের অনুমতি নেই।', 403);
     $role = budget_access($actor);
-    $items = rows("SELECT b.id,b.serial,b.applicant_name,b.branch,b.amount,b.status,b.released_on,b.release_reference,
+    $items = rows("SELECT b.id,b.serial,b.applicant_name,b.branch,b.amount,b.status,b.released_on,b.release_reference,s.actual,s.returned,s.voucher,s.note AS settlement_note,
         CASE WHEN b.status='released' THEN b.amount ELSE COALESCE(t.total,0.00) END AS released
         FROM od_budgets b LEFT JOIN (
             SELECT budget_id,SUM(amount) AS total FROM od_release_installments WHERE voided=0 GROUP BY budget_id
         ) t ON t.budget_id=b.id
+        LEFT JOIN od_budget_settlements s ON s.budget_id=b.id
         WHERE b.status='released' OR (b.status='pending' AND b.stage=3)
         ORDER BY b.serial DESC LIMIT 100");
     foreach ($items as &$item) $item['code'] = budget_code($item);
