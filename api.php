@@ -8,6 +8,7 @@ require __DIR__.'/office-private/budget.php';
 require __DIR__.'/office-private/staffing.php';
 require __DIR__.'/office-private/chat.php';
 require __DIR__.'/office-private/storage.php';
+require __DIR__.'/office-private/operations.php';
 headers_secure();
 try {
     session_boot();
@@ -19,6 +20,7 @@ try {
         $view=$bootstrap?strval_input($_GET,'view',20):null;
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        if (isset($_GET['operations'])) operations_get($a);
         if (isset($_GET['chat'])) chat_get($a);
         if (isset($_GET['budget'])) budget_get($a);
         if (isset($_GET['hr'])) hr_get($a);
@@ -38,6 +40,7 @@ try {
         foreach($members as &$m) { $m['view_all']=(int)$m['view_all']; $m['active']=(int)$m['active']; } unset($m);
         $registrations=$owner&&(!$bootstrap||$view==='requests')?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[];
         $pending=$owner?(int)(one("SELECT COUNT(*) AS total FROM od_registration_requests WHERE status='pending'")['total']??0):0;
+        $a['canBrowseStaff']=(bool)office_access($a,'profiles')&&($a['globalRead']||(bool)$a['branchId']);
         output(['access'=>$access,'loadedView'=>$view,'pendingRegistrations'=>$pending,'actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>!$bootstrap&&$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner&&(!$bootstrap||$view==='history')?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$registrations,'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
@@ -83,6 +86,7 @@ try {
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(operations_action($a,$v,$action)) output(['ok'=>true]);
     if(chat_action($a,$v,$action)) output(['ok'=>true]);
     if(staff_action($a,$v,$action)) output(['ok'=>true]);
     if(budget_action($a,$v,$action)) output(['ok'=>true]);
@@ -171,4 +175,3 @@ try {
     if ($code===500) error_log('Office Daily API error: '.get_class($e));
     output(['error'=>$code===500?'সেভ করা যায়নি। আবার চেষ্টা করুন।':$e->getMessage()],$code);
 }
-
