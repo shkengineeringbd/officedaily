@@ -62,13 +62,29 @@ function hr_get(array $a): never {
     $year=substr(today(),0,4);$month=$_GET['month']??substr(today(),0,7);
     if(!is_string($month)||!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month)) fail('সঠিক মাস বেছে নিন।');
     $uid=$a['userId'];$owner=$a['role']==='owner';$target=$uid;
-    if(isset($_GET['accountId'])) {$target=id_input($_GET,'accountId');staff_assert_account($a,$target);}
-    if(!one('SELECT id FROM od_accounts WHERE id=?',[$target]))fail('ইউজার নেই।',404);
-    $users=[];if($a['canBrowseStaff'])$users=$a['globalRead']?hr_profiles('1=1',[],$year):hr_profiles('EXISTS(SELECT 1 FROM od_staff_assignments s WHERE s.account_id=a.id AND s.branch_id=?)',[$a['branchId']],$year);
-    output(['today'=>today(),'month'=>$month,'year'=>$year,'profile'=>hr_summary($target,$year),'users'=>$users,
-      'attendance'=>rows('SELECT * FROM od_attendance WHERE account_id=? AND work_date LIKE ? ORDER BY work_date DESC',[$target,$month.'-%']),
-      'payroll'=>rows('SELECT * FROM od_payroll WHERE account_id=? ORDER BY month DESC LIMIT 36',[$target]),
-      'leaves'=>rows('SELECT * FROM od_leave_requests WHERE account_id=? ORDER BY created_at DESC LIMIT 100',[$target]),
+    if(isset($_GET['accountId'])) $target=id_input($_GET,'accountId');
+    $modules=['attendance','leave','payroll'];
+    $canRead=[];$canEdit=[];$mayBrowse=false;
+    foreach($modules as $module){
+      $canRead[$module]=office_module_scope($a,$module,$target);
+      $canEdit[$module]=office_may_edit($a,$module,$target);
+      $mayBrowse=$mayBrowse||office_access($a,$module)>0;
+    }
+    if(!in_array(true,$canRead,true))fail('এই ব্রাঞ্চ বা ইউজারের তথ্য দেখার অনুমতি নেই।',403);
+    $users=[];
+    if($mayBrowse && $a['globalRead'])$users=hr_profiles('1=1',[],$year);
+    elseif($mayBrowse && $a['branchId'])$users=hr_profiles('EXISTS(SELECT 1 FROM od_staff_assignments s WHERE s.account_id=a.id AND s.branch_id=?)',[$a['branchId']],$year);
+    $profile=hr_summary($target,$year);
+    if(!office_access($a,'payroll')){
+      foreach($users as &$user)foreach(['basic_salary','medical_allowance','other_allowance'] as $key)unset($user[$key]);
+      unset($user);
+    }
+    if(!$canRead['payroll'])foreach(['basic_salary','medical_allowance','other_allowance'] as $key)unset($profile[$key]);
+    if(!$canRead['leave'])foreach(['annual_leave','leave_used','leave_remaining'] as $key)unset($profile[$key]);
+    output(['today'=>today(),'month'=>$month,'year'=>$year,'profile'=>$profile,'users'=>$users,'canRead'=>$canRead,'canEdit'=>$canEdit,
+      'attendance'=>$canRead['attendance']?rows('SELECT * FROM od_attendance WHERE account_id=? AND work_date LIKE ? ORDER BY work_date DESC',[$target,$month.'-%']):[],
+      'payroll'=>$canRead['payroll']?rows('SELECT * FROM od_payroll WHERE account_id=? ORDER BY month DESC LIMIT 36',[$target]):[],
+      'leaves'=>$canRead['leave']?rows('SELECT * FROM od_leave_requests WHERE account_id=? ORDER BY created_at DESC LIMIT 100',[$target]):[],
       'recoveries'=>$owner?rows("SELECT r.id,r.status,r.expires_at,r.created_at,a.name,a.email,h.phone FROM od_password_recovery r JOIN od_accounts a ON a.id=r.account_id LEFT JOIN od_hr_profiles h ON h.account_id=a.id WHERE r.status IN ('pending','approved') ORDER BY r.created_at DESC LIMIT 100"):[]]);
 }
 function recovery_request(array $v): never {
@@ -137,7 +153,7 @@ function people_action(array $a,array $v,string $action): bool {
     if($action==='attendance') {
       $mode=$v['mode']??'';$date=day_input($v);$uid=$a['userId'];
       if($mode==='admin') {
-        hr_owner($a);$u=hr_target($v);$uid=$u['id'];if($date>today())fail('ভবিষ্যতের উপস্থিতি দেওয়া যাবে না।');
+        $u=hr_target($v);$uid=$u['id'];if(!office_may_edit($a,'attendance',$uid))fail('হাজিরা সংশোধনের অনুমতি নেই।',403);if($date>today())fail('ভবিষ্যতের উপস্থিতি দেওয়া যাবে না।');
         $status=$v['status']??'';if(!in_array($status,['Present','Absent','Leave','Holiday','Late'],true))fail('সঠিক উপস্থিতি বেছে নিন।');
         $note=strval_input($v,'note',1000,true);
         query('INSERT INTO od_attendance (account_id,work_date,status,note,updated_at) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),note=VALUES(note),updated_at=VALUES(updated_at)',[$uid,$date,$status,$note,now()]);
@@ -167,15 +183,16 @@ function people_action(array $a,array $v,string $action): bool {
       });return true;
     }
     if($action==='leave_review') {
-      hr_owner($a);$id=id_input($v,'id');$status=$v['status']??'';if(!in_array($status,['approved','rejected'],true))fail('সঠিক সিদ্ধান্ত দিন।');
-      transaction(function()use($id,$status){$r=one('SELECT * FROM od_leave_requests WHERE id=? FOR UPDATE',[$id]);if(!$r||$r['status']!=='pending')fail('অনুরোধটি আর অপেক্ষায় নেই।',409);
+      $id=id_input($v,'id');$status=$v['status']??'';if(!in_array($status,['approved','rejected'],true))fail('সঠিক সিদ্ধান্ত দিন।');
+      transaction(function()use($a,$id,$status){$r=one('SELECT * FROM od_leave_requests WHERE id=? FOR UPDATE',[$id]);if(!$r||$r['status']!=='pending')fail('অনুরোধটি আর অপেক্ষায় নেই।',409);
+        if(($a['userId']===$r['account_id']&&$a['role']!=='owner')||!office_may_edit($a,'leave',$r['account_id']))fail('ছুটি অনুমোদনের অনুমতি নেই।',403);
         hr_touch($r['account_id']);one('SELECT account_id FROM od_hr_profiles WHERE account_id=? FOR UPDATE',[$r['account_id']]);
         $p=hr_summary($r['account_id'],substr($r['start_date'],0,4));if($status==='approved'&&(int)$r['days']>$p['leave_remaining'])fail('বরাদ্দ ছুটির চেয়ে বেশি। আগে বরাদ্দ ঠিক করুন।');
         query('UPDATE od_leave_requests SET status=? WHERE id=?',[$status,$id]);
       });audit($a,'ছুটির সিদ্ধান্ত',$id);return true;
     }
     if($action==='payroll') {
-      hr_owner($a);$u=hr_target($v);$month=strval_input($v,'month',7);if(!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))fail('সঠিক মাস দিন।');
+      $u=hr_target($v);if(!office_may_edit($a,'payroll',$u['id']))fail('বেতন এডিট করার অনুমতি নেই।',403);$month=strval_input($v,'month',7);if(!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))fail('সঠিক মাস দিন।');
       $b=money_input($v,'basicSalary');$m=money_input($v,'medicalAllowance');$o=money_input($v,'otherAllowance');$d=money_input($v,'deductions');$net=round((float)$b+(float)$m+(float)$o-(float)$d,2);if($net<0)fail('কর্তন মোট বেতনের বেশি হতে পারবে না।');
       $state=$v['paymentStatus']??'';if(!in_array($state,['Unpaid','Paid'],true))fail('সঠিক পরিশোধ অবস্থা দিন।');$note=strval_input($v,'note',1000,true);
       query('INSERT INTO od_payroll (account_id,month,basic_salary,medical_allowance,other_allowance,deductions,net_salary,payment_status,note,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE basic_salary=VALUES(basic_salary),medical_allowance=VALUES(medical_allowance),other_allowance=VALUES(other_allowance),deductions=VALUES(deductions),net_salary=VALUES(net_salary),payment_status=VALUES(payment_status),note=VALUES(note),updated_at=VALUES(updated_at)',[$u['id'],$month,$b,$m,$o,$d,$net,$state,$note,now()]);audit($a,'বেতনের রেকর্ড',$month.' '.$u['email']);return true;
