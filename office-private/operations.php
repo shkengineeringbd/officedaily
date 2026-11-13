@@ -56,6 +56,11 @@ function office_may_edit(array $actor, string $module, string $account): bool {
 
 function operations_get(array $actor): never {
     $view = $_GET['operations'] ?? '';
+    if ($view === 'mfa') {
+        if (!finance_head($actor)) fail('MFA সেটআপের অনুমতি নেই।',403);
+        output(['enabled'=>(bool)one('SELECT account_id FROM od_mfa WHERE account_id=?',[$actor['userId']])]);
+    }
+    if ($view === 'payslip') payslip_get($actor);
     if ($view === 'insights') insights_get($actor);
     if ($view === 'inbox') inbox_get($actor);
     if ($view === 'finance') finance_get($actor);
@@ -101,6 +106,16 @@ function operations_action(array $actor, array $input, string $action): bool {
                 query('INSERT INTO od_module_access(account_id,module,access_level) VALUES(?,?,?) ON DUPLICATE KEY UPDATE access_level=VALUES(access_level)', [$account['id'], $module, $level]);
             }
             audit($actor, 'অপশনের অ্যাক্সেস বদল', $account['id'].' '.$module.' '.$level);
+        });
+        return true;
+    }
+    if ($action === 'operations_due_days') {
+        hr_owner($actor);
+        $days = $input['days'] ?? null;
+        if (!is_int($days) || $days < 0 || $days > 365) fail('সময়সীমা ০ থেকে ৩৬৫ দিনের মধ্যে দিন।');
+        transaction(function () use ($actor,$days) {
+            query("INSERT INTO od_app_meta(meta_key,meta_value) VALUES('approval_due_days',?) ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value)",[(string)$days]);
+            audit($actor,'অনুমোদনের সময়সীমা বদল',(string)$days);
         });
         return true;
     }
