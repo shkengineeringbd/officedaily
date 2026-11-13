@@ -102,6 +102,37 @@ async function renderNotices() {
     }
 }
 
+function backupForm() {
+    const form = element('form');
+    const password = element('input');
+    password.type = 'password';
+    password.minLength = 14;
+    password.maxLength = 100;
+    password.required = true;
+    password.autocomplete = 'new-password';
+    form.append(element('h3', 'এনক্রিপ্টেড ব্যাকআপ'));
+    field(form, 'ব্যাকআপ পাসফ্রেজ', password);
+    saveForm(form, 'ZIP ডাউনলোড করুন', async () => {
+        const response = await fetch('./api.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': document.querySelector('meta[name=csrf-token]').content,
+            },
+            body: JSON.stringify({ action: 'operations_backup', backupPassword: password.value }),
+        });
+        if (!response.ok) throw new Error((await response.json()).error || 'ব্যাকআপ তৈরি করা যায়নি।');
+        const url = URL.createObjectURL(await response.blob());
+        const link = element('a');
+        link.href = url;
+        link.download = 'Office_Daily_' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        password.value = '';
+    });
+    return form;
+}
+
 async function renderAccess() {
     const data = await request('access');
     const section = document.querySelector('#operations-access');
@@ -126,7 +157,7 @@ async function renderAccess() {
         grants.set(savedKey, savedLevel);
         update();
     });
-    section.replaceChildren(element('h2', 'অপশনের অ্যাক্সেস'), data.users.length ? form : element('p', 'কোনো সক্রিয় ইউজার নেই।'));
+    section.replaceChildren(element('h2', 'অপশনের অ্যাক্সেস'), data.users.length ? form : element('p', 'কোনো সক্রিয় ইউজার নেই।'), backupForm());
     section.hidden = false;
 }
 
