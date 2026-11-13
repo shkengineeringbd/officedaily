@@ -130,8 +130,72 @@ async function renderAccess() {
     section.hidden = false;
 }
 
+function releaseField(form, name, title, value = '', type = 'text', required = true) {
+    const input = element('input');
+    input.name = name;
+    input.type = type;
+    input.value = value;
+    input.required = required;
+    field(form, title, input);
+}
+
+function releaseForm(article, budget, title, action, fields, extra = {}) {
+    const details = element('details');
+    details.append(element('summary', title));
+    const form = element('form');
+    form.className = 'hr-form-grid';
+    for (const args of fields) releaseField(form, ...args);
+    saveForm(form, title, async () => {
+        const values = Object.fromEntries(new FormData(form));
+        if (values.percent === '') delete values.percent;
+        await request('', { action, id: budget.id, ...extra, ...values });
+        await renderReleases();
+    });
+    details.append(form);
+    article.append(details);
+}
+
+async function renderReleases() {
+    const data = await request('releases');
+    const section = document.querySelector('#operations-releases');
+    section.replaceChildren(element('h2', 'বাজেটের কিস্তি ও চূড়ান্ত রিলিজ'));
+    section.hidden = false;
+    if (!data.items.length) section.append(element('p', 'রিলিজের রেকর্ড নেই।'));
+    for (const budget of data.items) {
+        const article = element('article');
+        article.append(
+            element('h3', budget.code + ' · ' + budget.branch),
+            element('p', budget.applicant_name + ' · ছাড় হয়েছে ৳' + budget.released + ' / ৳' + budget.amount),
+        );
+        if (budget.status === 'pending' && data.role === 'cfo') {
+            releaseForm(article, budget, 'কিস্তি বা অবশিষ্ট টাকা ছাড়', 'budget_release', [
+                ['percent', 'অনুমোদিত বাজেটের শতাংশ (খালি রাখলে পুরো অবশিষ্ট)','','text',false],
+                ['date', 'রিলিজের তারিখ', data.today, 'date'],
+                ['reference', 'রিলিজ রেফারেন্স'],
+                ['note', 'মন্তব্য', '', 'text', false],
+            ], { expectedStage: 3, expectedReleased: budget.released });
+        }
+        if (budget.status === 'released') {
+            article.append(element('p', budget.released_on + ' · ' + budget.release_reference));
+            if (['gm','cfo'].includes(data.role)) {
+                releaseForm(article, budget, 'মন্তব্য যোগ করুন', 'release_remark', [['note','মন্তব্য']]);
+            }
+            if (data.isAdmin) {
+                const current = { expectedReference: budget.release_reference };
+                releaseForm(article, budget, 'শেষ রিলিজ সংশোধন', 'release_correct', [
+                    ['date','রিলিজের তারিখ',budget.released_on,'date'],
+                    ['reference','রিলিজ রেফারেন্স',budget.release_reference],
+                    ['note','সংশোধনের কারণ'],
+                ], current);
+                releaseForm(article, budget, 'শেষ রিলিজ বাতিল', 'release_void', [['note','বাতিলের কারণ']], current);
+            }
+        }
+        section.append(article);
+    }
+}
+
 if (status) {
-    const outcomes = await Promise.allSettled([renderNotices(), renderAccess()]);
+    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases()]);
     const failure = outcomes.find(result => result.status === 'rejected' && result.reason.status !== 403);
     if (failure) status.textContent = failure.reason.message;
     else if (outcomes.every(result => result.status === 'rejected')) status.textContent = 'এই বিভাগে আপনার অ্যাক্সেস নেই।';
