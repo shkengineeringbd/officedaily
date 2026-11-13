@@ -180,6 +180,15 @@ async function renderReleases() {
             if (['gm','cfo'].includes(data.role)) {
                 releaseForm(article, budget, 'মন্তব্য যোগ করুন', 'release_remark', [['note','মন্তব্য']]);
             }
+            if (budget.voucher) article.append(element('p', 'ভাউচার: ' + budget.voucher + ' · ব্যয় ৳' + budget.actual + ' · ফেরত ৳' + budget.returned));
+            if (data.isAdmin || data.role === 'cfo') {
+                releaseForm(article, budget, 'বাজেট নিষ্পত্তি', 'finance_settle', [
+                    ['voucher','বিল বা ভাউচার রেফারেন্স',budget.voucher ?? ''],
+                    ['actual','প্রকৃত ব্যয়',budget.actual ?? budget.amount],
+                    ['returned','অব্যয়িত টাকা ফেরত',budget.returned ?? '0.00'],
+                    ['note','মন্তব্য',budget.settlement_note ?? '', 'text', false],
+                ]);
+            }
             if (data.isAdmin) {
                 const current = { expectedReference: budget.release_reference };
                 releaseForm(article, budget, 'শেষ রিলিজ সংশোধন', 'release_correct', [
@@ -194,8 +203,142 @@ async function renderReleases() {
     }
 }
 
+function showPayroll(container, items) {
+    const table = element('table');
+    const heading = element('tr');
+    for (const title of ['নাম','Basic','Medical','অন্যান্য','কর্তন','নিট','অবস্থা']) heading.append(element('th', title));
+    table.append(heading);
+    for (const item of items) {
+        const row = element('tr');
+        for (const key of ['name','basic_salary','medical_allowance','other_allowance','deductions','net_salary','payment_status']) row.append(element('td', item[key]));
+        table.append(row);
+    }
+    const box = element('div');
+    box.style.overflowX = 'auto';
+    box.append(table);
+    container.append(box);
+}
+
+function payrollBudgetForm(article, batch, finalize, refresh) {
+    const details = element('details');
+    const label = finalize ? 'চূড়ান্ত করে বাজেটে যোগ' : 'বাজেটে যোগ';
+    details.append(element('summary', label));
+    const form = element('form');
+    form.className = 'hr-form-grid';
+    const method = select('method', [['Cash','Cash'],['Bank','Bank'],['bKash','bKash']]);
+    const fields = element('div');
+    const update = () => {
+        fields.replaceChildren();
+        if (method.value === 'Cash') releaseField(fields, 'recipient', 'গ্রহণকারীর নাম');
+        if (method.value === 'bKash') releaseField(fields, 'mobile', 'বিকাশ নম্বর');
+        if (method.value === 'Bank') {
+            releaseField(fields, 'bank', 'ব্যাংক');
+            releaseField(fields, 'accountName', 'অ্যাকাউন্টের নাম');
+            releaseField(fields, 'accountNumber', 'অ্যাকাউন্ট নম্বর');
+        }
+    };
+    method.addEventListener('change', update);
+    update();
+    field(form, 'পেমেন্ট মাধ্যম', method);
+    form.append(fields);
+    saveForm(form, label, async () => {
+        await request('', { action: finalize ? 'finance_finalize' : 'finance_budget', id: batch.id, autoBudget: finalize, ...Object.fromEntries(new FormData(form)) });
+        await refresh();
+    });
+    details.append(form);
+    article.append(details);
+}
+
+async function renderFinance(month = new Date(Date.now() + 6 * 3600000).toISOString().slice(0, 7)) {
+    const data = await request('finance&month=' + encodeURIComponent(month));
+    const section = document.querySelector('#operations-finance');
+    section.replaceChildren(element('h2', data.isHead ? 'Finance Dashboard' : 'ব্রাঞ্চের বেতন যাচাই'));
+    section.hidden = false;
+    const picker = element('form');
+    releaseField(picker, 'month', 'বেতনের মাস', data.month, 'month');
+    saveForm(picker, 'মাস দেখুন', () => renderFinance(new FormData(picker).get('month')));
+    section.append(picker);
+    const refresh = () => renderFinance(data.month);
+    if (data.canSubmit && data.payroll.length && !data.batches.length) {
+        showPayroll(section, data.payroll);
+        const form = element('form');
+        saveForm(form, 'যাচাই করে Head Office-এ পাঠান', async () => {
+            await request('', { action: 'finance_submit', month: data.month });
+            await refresh();
+        });
+        section.append(form);
+    }
+    if (!data.batches.length) section.append(element('p', 'পাঠানো বেতন তালিকা নেই।'));
+    for (const batch of data.batches) {
+        const article = element('article');
+        article.append(element('h3', batch.branch_name + ' · ' + batch.month + ' · ৳' + batch.total));
+        const details = element('details');
+        details.append(element('summary', batch.status === 'finalized' ? 'চূড়ান্ত বেতন' : 'যাচাইয়ের জন্য পাঠানো বেতন'));
+        showPayroll(details, batch.snapshot);
+        article.append(details);
+        if (data.isHead && batch.status === 'submitted') {
+            const form = element('form');
+            saveForm(form, 'বেতন চূড়ান্ত করুন', async () => {
+                await request('', { action: 'finance_finalize', id: batch.id });
+                await refresh();
+            });
+            article.append(form);
+        }
+        if (data.isHead && !batch.budget_id) payrollBudgetForm(article, batch, batch.status === 'submitted', refresh);
+        if (batch.budget_id) article.append(element('p', 'বাজেটে যোগ হয়েছে।'));
+        section.append(article);
+    }
+}
+
+async function renderInbox() {
+    const data = await request('inbox');
+    const section = document.querySelector('#operations-inbox');
+    section.replaceChildren(element('h2', 'অনুমোদনের ইনবক্স'));
+    section.hidden = false;
+    for (const [title, entries] of [['বাজেট অপেক্ষায়', data.budgets], ['ছুটি অপেক্ষায়', data.leaves], ['প্রত্যাখ্যাত বাজেট', data.returned]]) {
+        section.append(element('h3', title + ' · ' + entries.length));
+        for (const entry of entries) {
+            const label = entry.name ? entry.name + ' · ' + entry.start_date + ' থেকে ' + entry.end_date
+                : 'BR-' + String(entry.serial).padStart(6, '0') + ' · ' + entry.branch + ' · ' + entry.reason + ' · ' + entry.submitted_on;
+            const article = element('article');
+            article.append(element('p', label));
+            if (entry.name) for (const [decision, text] of [['approved', 'অনুমোদন'], ['rejected', 'প্রত্যাখ্যান']]) {
+                const form = element('form');
+                saveForm(form, text, async () => {
+                    await request('', { action: 'leave_review', id: entry.id, status: decision });
+                    await renderInbox();
+                });
+                article.append(form);
+            }
+            section.append(article);
+        }
+    }
+}
+
+async function renderInsights(month = new Date(Date.now() + 6 * 3600000).toISOString().slice(0, 7)) {
+    const data = await request('insights&month=' + encodeURIComponent(month));
+    const section = document.querySelector('#operations-insights');
+    section.replaceChildren(element('h2', 'ব্রাঞ্চ ড্যাশবোর্ড'));
+    section.hidden = false;
+    const picker = element('form');
+    releaseField(picker, 'month', 'মাস', data.month, 'month');
+    saveForm(picker, 'মাস দেখুন', () => renderInsights(new FormData(picker).get('month')));
+    section.append(picker);
+    for (const branch of data.branches) {
+        const article = element('article');
+        article.append(element('h3', branch.name));
+        for (const [label, counts] of [['কাজ', branch.tasks], ['হাজিরা', branch.attendance], ['বাজেট', branch.budget]]) {
+            if (!counts.length) continue;
+            article.append(element('p', label + ' · ' + counts.map(row =>
+                row.status + ' ' + row.total + (row.amount ? ' (৳' + row.amount + ')' : '')
+            ).join(' · ')));
+        }
+        section.append(article);
+    }
+}
+
 if (status) {
-    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases()]);
+    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases(), renderFinance(), renderInbox(), renderInsights()]);
     const failure = outcomes.find(result => result.status === 'rejected' && result.reason.status !== 403);
     if (failure) status.textContent = failure.reason.message;
     else if (outcomes.every(result => result.status === 'rejected')) status.textContent = 'এই বিভাগে আপনার অ্যাক্সেস নেই।';
