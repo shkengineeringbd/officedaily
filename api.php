@@ -10,6 +10,8 @@ require __DIR__.'/office-private/chat.php';
 require __DIR__.'/office-private/storage.php';
 require __DIR__.'/office-private/operations.php';
 require __DIR__.'/office-private/releases.php';
+require __DIR__.'/office-private/finance.php';
+require __DIR__.'/office-private/insights.php';
 headers_secure();
 try {
     session_boot();
@@ -87,6 +89,7 @@ try {
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(finance_action($a,$v,$action)) output(['ok'=>true]);
     if(release_history_action($a,$v,$action)) output(['ok'=>true]);
     if(operations_action($a,$v,$action)) output(['ok'=>true]);
     if(chat_action($a,$v,$action)) output(['ok'=>true]);
