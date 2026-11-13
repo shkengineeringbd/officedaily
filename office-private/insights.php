@@ -5,10 +5,10 @@ if (!defined('OFFICE_APP')) { http_response_code(404); exit; }
 
 function insights_get(array $actor): never {
     $month = finance_month($_GET);
+    if (!$actor['globalRead'] && !$actor['manageBranch']) fail('ড্যাশবোর্ড দেখার অনুমতি নেই।',403);
     $branches = $actor['globalRead']
         ? rows('SELECT id,name FROM od_branches WHERE active=1 ORDER BY name')
         : rows('SELECT id,name FROM od_branches WHERE id=? AND active=1', [$actor['branchId']]);
-    if (!$actor['globalRead'] && !$actor['manageBranch']) fail('ড্যাশবোর্ড দেখার অনুমতি নেই।',403);
     foreach ($branches as &$branch) {
         $id = $branch['id'];
         $branch['tasks'] = rows("SELECT t.status,COUNT(*) AS total FROM od_tasks t JOIN od_members m ON m.id=t.assignee_id
@@ -35,7 +35,7 @@ function inbox_get(array $actor): never {
         $where = $global ? '1=1' : 's.branch_id=?';
         $leaves = rows("SELECT l.id,l.account_id,a.name,l.start_date,l.end_date,l.created_at FROM od_leave_requests l
             JOIN od_accounts a ON a.id=l.account_id LEFT JOIN od_staff_assignments s ON s.account_id=a.id
-            WHERE l.status='pending' AND $where ORDER BY l.created_at LIMIT 100",$global ? [] : [$actor['branchId']]);
+            WHERE l.status='pending' AND l.account_id<>? AND $where ORDER BY l.created_at LIMIT 100",$global ? [$actor['userId']] : [$actor['userId'],$actor['branchId']]);
     }
     output(['budgets'=>$budgets,'returned'=>$returned,'leaves'=>$leaves]);
 }
