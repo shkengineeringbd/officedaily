@@ -60,15 +60,16 @@ function staff_profile_info(string $uid):array{
 function staff_get(array $a):never{
  $mode=$_GET['staff']??'self';
  if($mode==='file'){
-  $f=one('SELECT * FROM od_identity_files WHERE id=?',[id_input($_GET,'id')]);if(!$f)fail('ফাইল পাওয়া যায়নি।',404);staff_assert_account($a,$f['account_id']);
+  $f=one('SELECT * FROM od_identity_files WHERE id=?',[id_input($_GET,'id')]);if(!$f)fail('ফাইল পাওয়া যায়নি।',404);if(!office_module_scope($a,'profiles',$f['account_id']))fail('ফাইল দেখার অনুমতি নেই।',403);
+  if($f['kind']==='nid')audit($a,'NID ফাইল দেখা',$f['account_id']);
   $plain=openssl_decrypt($f['cipher'],'aes-256-gcm',hash('sha256','office-identity-files|'.config()['app_secret'],true),OPENSSL_RAW_DATA,$f['nonce'],$f['tag'],$f['account_id'].'|'.$f['kind']);if($plain===false)fail('ফাইল খোলা যায়নি।',500);
   header('Content-Type: '.$f['mime']);header('Content-Length: '.strlen($plain));header("Content-Security-Policy: default-src 'none'; sandbox");
   header('Content-Disposition: '.($f['kind']==='photo'?'inline':'attachment').'; filename="'.$f['kind'].($f['mime']==='application/pdf'?'.pdf':($f['mime']==='image/png'?'.png':($f['mime']==='image/webp'?'.webp':'.jpg'))).'"');echo $plain;exit;
  }
  if($mode==='self')output([...staff_profile_info($a['userId']),'branches'=>staff_branches(),'actor'=>$a]);
  if($mode==='branches'){hr_owner($a);output(['branches'=>staff_branches()]);}
- if(!$a['canBrowseStaff'])fail('কর্মী তালিকা দেখার অনুমতি নেই।',403);
- if($mode==='detail'){$uid=id_input($_GET,'accountId');staff_assert_account($a,$uid);output([...staff_profile_info($uid),'canReview'=>staff_can_review($a,$uid)]);}
+ if(!office_access($a,'profiles')||(!$a['globalRead']&&!$a['branchId']))fail('কর্মী তালিকা দেখার অনুমতি নেই।',403);
+ if($mode==='detail'){$uid=id_input($_GET,'accountId');if(!office_module_scope($a,'profiles',$uid))fail('প্রোফাইল দেখার অনুমতি নেই।',403);output([...staff_profile_info($uid),'canReview'=>staff_can_review($a,$uid)]);}
  if($mode!=='list')fail('সঠিক স্টাফ বিভাগ দিন।');
  $where='1=1';$args=[];if(!$a['globalRead']){$where='s.branch_id=?';$args[]=$a['branchId'];}
  $items=rows("SELECT a.id,a.name,a.email,a.is_owner,s.post,s.branch_id,b.name AS branch_name,p.status AS profile_status,p.revision,p.full_name,COALESCE(m.active,a.is_owner) AS active FROM od_accounts a LEFT JOIN od_staff_assignments s ON s.account_id=a.id LEFT JOIN od_branches b ON b.id=s.branch_id LEFT JOIN od_identity_profiles p ON p.account_id=a.id LEFT JOIN od_members m ON m.user_id=a.id WHERE $where ORDER BY p.status='pending' DESC,a.name",$args);
@@ -76,7 +77,7 @@ function staff_get(array $a):never{
 }
 function staff_can_review(array $a,string $uid):bool{
  if($a['userId']===$uid)return false;
- return $a['role']==='owner'||($a['manageBranch']&&staff_account_allowed($a,$uid));
+ return office_may_edit($a,'profiles',$uid);
 }
 function staff_file(array $v,string $key,string $uid,string $kind,?string $existing):string{
  $raw=$v[$key]??'';if($raw===''&&$existing)return $existing;
