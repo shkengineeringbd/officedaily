@@ -47,6 +47,53 @@ function snapshot(PDO $connection): array {
     ksort($snapshot);
     return $snapshot;
 }
+function check(bool $condition,string $message): void {
+    if (!$condition) throw new RuntimeException($message);
+}
+function verify_operations(string $root): void {
+    foreach (['staffing','operations','budget','releases','people'] as $module) {
+        require $root.'/office-private/'.$module.'.php';
+    }
+    $owner = ['id'=>'owner','userId'=>'owner','email'=>'test@example.test','name'=>'পরীক্ষা',
+        'role'=>'owner','post'=>'admin','globalRead'=>true,'manageBranch'=>false,'branchId'=>null];
+    $manager = ['id'=>uid(),'userId'=>uid(),'role'=>'manager','post'=>'branch_manager',
+        'globalRead'=>false,'manageBranch'=>true,'branchId'=>'test-a'];
+    $staff = uid();
+    $other = uid();
+    foreach ([$manager['userId']=>'test-a',$staff=>'test-a',$other=>'test-b'] as $id=>$branch) {
+        query('INSERT INTO od_accounts(id,email,name,password_hash,created_at) VALUES(?,?,?,?,?)',[$id,$id.'@example.test','Test','unused',now()]);
+        query('INSERT IGNORE INTO od_branches(id,name) VALUES(?,?)',[$branch,$branch]);
+        query('INSERT INTO od_staff_assignments(account_id,branch_id,post,assigned_by,assigned_at) VALUES(?,?,?,?,?)',[$id,$branch,'staff','owner',now()]);
+    }
+    check(office_may_edit($manager,'leave',$staff),'Manager cannot review own branch leave.');
+    check(!office_may_edit($manager,'leave',$other),'Manager could edit another branch.');
+    check(office_module_scope($manager,'payroll',$staff)&&!office_may_edit($manager,'payroll',$staff),'Payroll should default to view access for the manager.');
+    operations_action($owner,['accountId'=>$manager['userId'],'module'=>'leave','level'=>0],'operations_access');
+    check(!office_module_scope($manager,'leave',$staff),'An explicit denial did not revoke branch leave access.');
+    operations_action($owner,['accountId'=>$manager['userId'],'module'=>'leave','level'=>-1],'operations_access');
+    check(office_may_edit($manager,'leave',$staff),'Removing the override did not restore the role default.');
+
+    $id = uid();
+    $date = today();
+    query("INSERT INTO od_budgets(id,creator_id,applicant_name,applicant_email,branch,reason,amount,method,payment_details,stage,submitted_on,created_at) VALUES(?,?,?,?,?,?,?,?,?,3,?,?)",
+        [$id,'owner','Test','test@example.test','test-a','Test','100.00','Cash','{}',$date,now()]);
+    $budget = one('SELECT * FROM od_budgets WHERE id=?',[$id]);
+    $first = ['percent'=>'25','expectedReleased'=>'0.00','date'=>$date,'reference'=>'FIRST','note'=>''];
+    transaction(fn()=>release_record($owner,$first,$budget,'cfo'));
+    check(release_total($id)===2500,'First installment differs from the requested percentage.');
+    try {
+        transaction(fn()=>release_record($owner,$first,$budget,'cfo'));
+        throw new LogicException('Repeated stale installment was accepted.');
+    } catch (RuntimeException $error) {
+        check($error->getCode()===409,'Stale installment was rejected for an unexpected reason.');
+    }
+    $last = ['percent'=>'75','expectedReleased'=>'25.00','date'=>$date,'reference'=>'LAST','note'=>''];
+    transaction(fn()=>release_record($owner,$last,$budget,'cfo'));
+    check(release_total($id)===10000,'Final installment did not balance.');
+    check(one('SELECT status FROM od_budgets WHERE id=?',[$id])['status']==='released','Full payment did not complete the release.');
+    check(array_column(budget_events($id),'action')===['installment','released'],'Release history differs from the recorded installments.');
+    echo "Branch permissions and percentage payments passed.\n";
+}
 
 $server = new PDO('mysql:host=127.0.0.1;port=3306','root','office-test-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $server->exec('CREATE DATABASE office_upgrade_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
@@ -93,6 +140,8 @@ CODE);
     foreach (['od_module_access','od_notices','od_release_installments','od_payroll_batches','od_budget_settlements','od_mfa'] as $table) {
         if (!array_key_exists($table,$after)) throw new RuntimeException('Upgrade did not create '.$table);
     }
+    verify_operations($newRoot);
+    $after = snapshot(db());
 
     $passphrase = bin2hex(random_bytes(20));
     putenv('OFFICE_BACKUP_PASSPHRASE='.$passphrase);
