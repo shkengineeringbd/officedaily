@@ -1,0 +1,37 @@
+name: Office Daily operations
+on:
+  push:
+    branches: [office-daily-operations-1-5]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  operations:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: office-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Check PHP and JavaScript syntax
+        run: |
+          find . -name '*.php' -print0 | xargs -0 -n1 php -l
+          find assets -name '*.js' -print0 | while IFS= read -r -d '' source; do
+            node --input-type=module --check < "$source" || exit
+          done
+      - name: Test upgrade and encrypted backup restoration
+        run: bash tests/operations-upgrade.sh

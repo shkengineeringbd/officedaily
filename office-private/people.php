@@ -75,10 +75,13 @@ function hr_get(array $a): never {
     if($mayBrowse && $a['globalRead'])$users=hr_profiles('1=1',[],$year);
     elseif($mayBrowse && $a['branchId'])$users=hr_profiles('EXISTS(SELECT 1 FROM od_staff_assignments s WHERE s.account_id=a.id AND s.branch_id=?)',[$a['branchId']],$year);
     $profile=hr_summary($target,$year);
-    if(!office_access($a,'payroll')){
-      foreach($users as &$user)foreach(['basic_salary','medical_allowance','other_allowance'] as $key)unset($user[$key]);
-      unset($user);
+    $showSalaries=office_access($a,'payroll')>0;
+    $showLeaveBalances=office_access($a,'leave')>0;
+    foreach($users as &$user){
+      if(!$showSalaries)foreach(['basic_salary','medical_allowance','other_allowance'] as $key)unset($user[$key]);
+      if(!$showLeaveBalances)foreach(['annual_leave','leave_used','leave_remaining'] as $key)unset($user[$key]);
     }
+    unset($user);
     if(!$canRead['payroll'])foreach(['basic_salary','medical_allowance','other_allowance'] as $key)unset($profile[$key]);
     if(!$canRead['leave'])foreach(['annual_leave','leave_used','leave_remaining'] as $key)unset($profile[$key]);
     output(['today'=>today(),'month'=>$month,'year'=>$year,'profile'=>$profile,'users'=>$users,'canRead'=>$canRead,'canEdit'=>$canEdit,
@@ -189,7 +192,8 @@ function people_action(array $a,array $v,string $action): bool {
         hr_touch($r['account_id']);one('SELECT account_id FROM od_hr_profiles WHERE account_id=? FOR UPDATE',[$r['account_id']]);
         $p=hr_summary($r['account_id'],substr($r['start_date'],0,4));if($status==='approved'&&(int)$r['days']>$p['leave_remaining'])fail('বরাদ্দ ছুটির চেয়ে বেশি। আগে বরাদ্দ ঠিক করুন।');
         query('UPDATE od_leave_requests SET status=? WHERE id=?',[$status,$id]);
-      });audit($a,'ছুটির সিদ্ধান্ত',$id);return true;
+        audit($a,'ছুটির সিদ্ধান্ত',$id);
+      });return true;
     }
     if($action==='payroll') {
       $u=hr_target($v);if(!office_may_edit($a,'payroll',$u['id']))fail('বেতন এডিট করার অনুমতি নেই।',403);$month=strval_input($v,'month',7);if(!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/',$month))fail('সঠিক মাস দিন।');
