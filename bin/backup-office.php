@@ -22,12 +22,8 @@ try {
     if (!rename($path,$destination)) throw new RuntimeException('Could not move encrypted ZIP into the backup directory.');
     chmod($destination,0600);
     echo $destination.PHP_EOL;
-    $remote = getenv('OFFICE_BACKUP_DRIVE_REMOTE');
-    if (is_string($remote)&&$remote!=='') {
-        if (!preg_match('/^[a-zA-Z0-9_-]+:[^\r\n]*$/D',$remote)) throw new RuntimeException('Use a configured rclone Google Drive remote and directory.');
-        $process = proc_open(['rclone','copyto','--',$destination,rtrim($remote,'/').'/'.$name],[0=>STDIN,1=>STDOUT,2=>STDERR],$pipes);
-        if (!is_resource($process)||proc_close($process)!==0) throw new RuntimeException('Drive upload failed. The encrypted local ZIP was retained.');
-    }
+    $remote = backup_drive_remote();
+    if ($remote!==null) backup_copy_to_drive($destination,$name,$remote);
 } catch (Throwable $error) {
     if (isset($path)&&is_file($path)) @unlink($path);
     fwrite(STDERR,'Backup stopped: '.$error->getMessage().PHP_EOL);

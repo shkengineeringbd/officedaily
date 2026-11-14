@@ -71,6 +71,7 @@ function operations_get(array $actor): never {
             'modules' => OFFICE_ACCESS_MODULES,
             'users' => rows('SELECT a.id,a.name,a.email FROM od_accounts a JOIN od_members m ON m.user_id=a.id WHERE a.is_owner=0 AND m.active=1 ORDER BY a.name'),
             'grants' => rows('SELECT account_id,module,access_level FROM od_module_access'),
+            'backupDriveAvailable' => (bool)getenv('OFFICE_BACKUP_DRIVE_REMOTE'),
         ]);
     }
     if ($view === 'notices') {

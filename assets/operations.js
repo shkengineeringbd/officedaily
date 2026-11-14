@@ -175,7 +175,7 @@ function importForm() {
     return section;
 }
 
-function backupForm() {
+function backupForm(driveAvailable) {
     const form = element('form');
     const password = element('input');
     password.type = 'password';
@@ -185,7 +185,16 @@ function backupForm() {
     password.autocomplete = 'new-password';
     form.append(element('h3', 'এনক্রিপ্টেড ব্যাকআপ'));
     field(form, 'ব্যাকআপ পাসফ্রেজ', password);
-    saveForm(form, 'ZIP ডাউনলোড করুন', async () => {
+    const destinations = [['download', 'ZIP ডাউনলোড']];
+    if (driveAvailable) destinations.push(['drive', 'Google Drive']);
+    const destination = select('destination', destinations);
+    if (driveAvailable) field(form, 'ব্যাকআপ রাখুন', destination);
+    saveForm(form, 'ব্যাকআপ নিন', async () => {
+        if (destination.value === 'drive') {
+            await request('', { action: 'operations_backup', backupPassword: password.value, destination: 'drive' });
+            password.value = '';
+            return;
+        }
         const response = await fetch('./api.php', {
             method: 'POST',
             headers: {
@@ -230,7 +239,7 @@ async function renderAccess() {
         grants.set(savedKey, savedLevel);
         update();
     });
-    section.replaceChildren(element('h2', 'অপশনের অ্যাক্সেস'), data.users.length ? form : element('p', 'কোনো সক্রিয় ইউজার নেই।'), backupForm(), importForm());
+    section.replaceChildren(element('h2', 'অপশনের অ্যাক্সেস'), data.users.length ? form : element('p', 'কোনো সক্রিয় ইউজার নেই।'), backupForm(data.backupDriveAvailable), importForm());
     section.hidden = false;
 }
 
