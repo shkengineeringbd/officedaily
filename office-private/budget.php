@@ -88,10 +88,7 @@ function budget_action(array $a,array $v,string $action): bool {
                 budget_event($a,$id,$decision==='approve'?'approved':'rejected',$expected,$note,$role);
             }else {
                 if($expected!==3)fail('GM, CFO ও MD অনুমোদনের আগে টাকা রিলিজ করা যাবে না।',409);
-                $date=day_input($v);if($date<$b['submitted_on']||$date>today())fail('আবেদনের তারিখ থেকে আজকের মধ্যে রিলিজের তারিখ দিন।');
-                $reference=strval_input($v,'reference',100);$note=strval_input($v,'note',2000,true);
-                query("UPDATE od_budgets SET stage=4,status='released',released_on=?,release_reference=? WHERE id=?",[$date,$reference,$id]);
-                budget_event($a,$id,'released',3,'রিলিজ তারিখ: '.$date.' | রেফারেন্স: '.$reference.($note!==''?' | '.$note:''),$role);
+                release_record($a,$v,$b,$role);
             }
         });output(['ok'=>true,'id'=>$id]);
     }

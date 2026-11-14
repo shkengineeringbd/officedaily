@@ -8,6 +8,14 @@ require __DIR__.'/office-private/budget.php';
 require __DIR__.'/office-private/staffing.php';
 require __DIR__.'/office-private/chat.php';
 require __DIR__.'/office-private/storage.php';
+require __DIR__.'/office-private/operations.php';
+require __DIR__.'/office-private/releases.php';
+require __DIR__.'/office-private/finance.php';
+require __DIR__.'/office-private/insights.php';
+require __DIR__.'/office-private/backup.php';
+require __DIR__.'/office-private/payslip.php';
+require __DIR__.'/office-private/mfa.php';
+require __DIR__.'/office-private/attendance-import.php';
 headers_secure();
 try {
     session_boot();
@@ -19,6 +27,7 @@ try {
         $view=$bootstrap?strval_input($_GET,'view',20):null;
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        if (isset($_GET['operations'])) operations_get($a);
         if (isset($_GET['chat'])) chat_get($a);
         if (isset($_GET['budget'])) budget_get($a);
         if (isset($_GET['hr'])) hr_get($a);
@@ -38,6 +47,7 @@ try {
         foreach($members as &$m) { $m['view_all']=(int)$m['view_all']; $m['active']=(int)$m['active']; } unset($m);
         $registrations=$owner&&(!$bootstrap||$view==='requests')?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[];
         $pending=$owner?(int)(one("SELECT COUNT(*) AS total FROM od_registration_requests WHERE status='pending'")['total']??0):0;
+        $a['canBrowseStaff']=(bool)office_access($a,'profiles')&&($a['globalRead']||(bool)$a['branchId']);
         output(['access'=>$access,'loadedView'=>$view,'pendingRegistrations'=>$pending,'actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>!$bootstrap&&$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner&&(!$bootstrap||$view==='history')?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$registrations,'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
@@ -53,6 +63,8 @@ try {
         if (!password_verify($password,$hash) || !$u) fail('ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।',401);
         if (password_needs_rehash($u['password_hash'],PASSWORD_DEFAULT)) query('UPDATE od_accounts SET password_hash=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),$u['id']]);
         if(!access_enabled($u['id'])) fail('অ্যাকাউন্টের অ্যাক্সেস বন্ধ রয়েছে। অ্যাডমিনের সঙ্গে যোগাযোগ করুন।',403);
+        if (one('SELECT account_id FROM od_mfa WHERE account_id=?',[$u['id']])&&!array_key_exists('otp',$v)) output(['ok'=>false,'mfaRequired'=>true],428);
+        mfa_check($u['id'],$v['otp']??null);
         sign_in($u); output(['ok'=>true]);
     }
     if ($action==='signup') {
@@ -83,6 +95,12 @@ try {
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(attendance_import($a,$v,$action)) output(['ok'=>true]);
+    if(mfa_action($a,$v,$action)) output(['ok'=>true]);
+    if(backup_action($a,$v,$action)) output(['ok'=>true]);
+    if(finance_action($a,$v,$action)) output(['ok'=>true]);
+    if(release_history_action($a,$v,$action)) output(['ok'=>true]);
+    if(operations_action($a,$v,$action)) output(['ok'=>true]);
     if(chat_action($a,$v,$action)) output(['ok'=>true]);
     if(staff_action($a,$v,$action)) output(['ok'=>true]);
     if(budget_action($a,$v,$action)) output(['ok'=>true]);
@@ -171,4 +189,3 @@ try {
     if ($code===500) error_log('Office Daily API error: '.get_class($e));
     output(['error'=>$code===500?'সেভ করা যায়নি। আবার চেষ্টা করুন।':$e->getMessage()],$code);
 }
-
