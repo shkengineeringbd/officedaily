@@ -50,7 +50,7 @@ function snapshot(PDO $connection): array {
 function check(bool $condition,string $message): void {
     if (!$condition) throw new RuntimeException($message);
 }
-function verify_operations(string $root): void {
+function verify_operations(string $root,string $scratch): void {
     foreach (['staffing','operations','budget','releases','people'] as $module) {
         require $root.'/office-private/'.$module.'.php';
     }
@@ -93,6 +93,33 @@ function verify_operations(string $root): void {
     check(one('SELECT status FROM od_budgets WHERE id=?',[$id])['status']==='released','Full payment did not complete the release.');
     check(array_column(budget_events($id),'action')===['installment','released'],'Release history differs from the recorded installments.');
     echo "Branch permissions and percentage payments passed.\n";
+
+    query('INSERT INTO od_budget_branches(budget_id,branch_id) VALUES(?,?)',[$id,'test-a']);
+    $member = uid();
+    query('INSERT INTO od_members(id,user_id,email,name) VALUES(?,?,?,?)',[$member,$staff,$staff.'@example.test','Test']);
+    query('INSERT INTO od_tasks(id,assignee_id,title,details,date,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+        [uid(),$member,'Test','',$date,'Remaining',now(),now()]);
+    foreach ([[$staff,$date],[$staff,'2000-01-01'],[$other,$date]] as [$account,$day]) {
+        query('INSERT INTO od_attendance(account_id,work_date,status,note,updated_at) VALUES(?,?,?,?,?)',
+            [$account,$day,'Present','',now()]);
+    }
+    $script = $scratch.'/dashboard.php';
+    file_put_contents($script,storage_entry($root)."require ".var_export($root.'/office-private/insights.php',true).";\n".<<<'CODE'
+$_GET['month'] = $argv[1];
+insights_get(json_decode($argv[2],true,512,JSON_THROW_ON_ERROR));
+CODE);
+    $month = substr($date,0,7);
+    $dashboard = fn(array $actor)=>json_decode(run_php($script,$month,json_encode($actor,JSON_THROW_ON_ERROR)),true,512,JSON_THROW_ON_ERROR);
+    $all = array_column($dashboard($owner)['branches'],null,'id');
+    check((int)$all['test-a']['tasks'][0]['total']===1,'Dashboard task counts changed.');
+    check((int)$all['test-a']['attendance'][0]['total']===1 && (int)$all['test-b']['attendance'][0]['total']===1,'Dashboard attendance scope or month changed.');
+    check((string)$all['test-a']['budget'][0]['amount']==='100.00' && $all['test-b']['budget']===[],'Dashboard budget totals changed.');
+    check($all['head-office']['tasks']===[] && $all['head-office']['attendance']===[],'Empty branches must remain visible.');
+    $own = $dashboard($manager)['branches'];
+    check(count($own)===1 && $own[0]===$all['test-a'],'Branch manager dashboard scope changed.');
+    operations_action($owner,['accountId'=>$manager['userId'],'module'=>'attendance','level'=>0],'operations_access');
+    check($dashboard($manager)['branches'][0]['attendance']===[],'Dashboard disregarded revoked attendance permissions.');
+    echo "Dashboard totals, month and branch permissions passed.\n";
 }
 
 $server = new PDO('mysql:host=127.0.0.1;port=3306','root','office-test-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
@@ -140,7 +167,7 @@ CODE);
     foreach (['od_module_access','od_notices','od_release_installments','od_payroll_batches','od_budget_settlements','od_mfa'] as $table) {
         if (!array_key_exists($table,$after)) throw new RuntimeException('Upgrade did not create '.$table);
     }
-    verify_operations($newRoot);
+    verify_operations($newRoot,$oldRoot);
     $after = snapshot(db());
 
     $passphrase = bin2hex(random_bytes(20));

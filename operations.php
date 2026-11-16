@@ -12,7 +12,7 @@ session_boot();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?= htmlspecialchars($_SESSION['csrf'], ENT_QUOTES, 'UTF-8') ?>">
     <title>Office Daily | অফিস পরিচালনা</title>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=<?= filemtime(__DIR__.'/assets/app.css') ?>">
 </head>
 <body>
     <main class="state-card">
@@ -27,6 +27,6 @@ session_boot();
         <section id="operations-mfa" class="panel" hidden></section>
         <section id="operations-access" class="panel" hidden></section>
     </main>
-    <script type="module" src="assets/operations.js"></script>
+    <script type="module" src="assets/operations.js?v=<?= filemtime(__DIR__.'/assets/operations.js') ?>"></script>
 </body>
 </html>

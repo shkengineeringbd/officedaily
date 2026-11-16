@@ -26,12 +26,6 @@ function staff_decorate(array $a,bool $require=true):array{
  if($require&&!$verified)fail('ব্রাঞ্চ, পোস্ট এবং ব্যক্তিগত প্রোফাইলের চূড়ান্ত অনুমোদন প্রয়োজন।',403);
  return $a;
 }
-function staff_account_allowed(array $a,string $uid):bool{
- if($uid===$a['userId']||$a['globalRead'])return true;
- if(!$a['manageBranch']||!$a['branchId'])return false;
- $s=staff_assignment($uid);return $s&&$s['branch_id']===$a['branchId'];
-}
-function staff_assert_account(array $a,string $uid):void{if(!staff_account_allowed($a,$uid))fail('এই ব্রাঞ্চ বা ইউজারের তথ্য দেখার অনুমতি নেই।',403);}
 function staff_task_scope(array $a,string $alias='t'):array{
  if($a['globalRead'])return ['1=1',[]];
  if($a['manageBranch'])return ["EXISTS (SELECT 1 FROM od_members sm JOIN od_staff_assignments ss ON ss.account_id=sm.user_id WHERE sm.id=$alias.assignee_id AND ss.branch_id=?)",[$a['branchId']]];

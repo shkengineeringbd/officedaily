@@ -495,21 +495,7 @@ async function renderMfa() {
     section.append(form);
 }
 
-if (status) {
-    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases(), renderFinance(), renderInbox(), renderInsights(), renderMfa()]);
-    const failure = outcomes.find(result => result.status === 'rejected' && result.reason.status !== 403);
-    if (failure) status.textContent = failure.reason.message;
-    else if (outcomes.every(result => result.status === 'rejected')) status.textContent = 'এই বিভাগে আপনার অ্যাক্সেস নেই।';
-} else {
-    const root = document.querySelector('#root');
-    const observer = new MutationObserver(() => {
-        const top = root.querySelector('.topbar .top-right');
-        if (!top || !top.querySelector('.logout-button') || top.querySelector('[data-office-operations]')) return;
-        const link = element('a', 'অফিস পরিচালনা');
-        link.href = './operations.php';
-        link.className = 'btn compact';
-        link.dataset.officeOperations = '1';
-        top.prepend(link);
-    });
-    if (root) observer.observe(root, { childList: true, subtree: true });
-}
+const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases(), renderFinance(), renderInbox(), renderInsights(), renderMfa()]);
+const failure = outcomes.find(result => result.status === 'rejected' && result.reason.status !== 403);
+if (failure) status.textContent = failure.reason.message;
+else if (outcomes.every(result => result.status === 'rejected')) status.textContent = 'এই বিভাগে আপনার অ্যাক্সেস নেই।';
