@@ -104,7 +104,6 @@ function registration_state(): array {
     $r=one('SELECT id,status,created_at,reviewed_at FROM od_registration_requests WHERE user_id=?',[$u['id']]);
     return ['state'=>$r ? ($r['status']==='approved'?'disabled':$r['status']) : 'new','user'=>$user,'request'=>$r];
 }
-function grants(array $a): array { return array_column(rows('SELECT target_id FROM od_grants WHERE viewer_id=?',[$a['id']]),'target_id'); }
 function visible(array $a,string $taskId): array {
     [$scope,$args]=staff_task_scope($a);
     $t=one('SELECT t.* FROM od_tasks t WHERE t.id=? AND '.$scope,[$taskId,...$args]);

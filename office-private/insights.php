@@ -9,16 +9,34 @@ function insights_get(array $actor): never {
     $branches = $actor['globalRead']
         ? rows('SELECT id,name FROM od_branches WHERE active=1 ORDER BY name')
         : rows('SELECT id,name FROM od_branches WHERE id=? AND active=1', [$actor['branchId']]);
-    foreach ($branches as &$branch) {
-        $id = $branch['id'];
-        $branch['tasks'] = rows("SELECT t.status,COUNT(*) AS total FROM od_tasks t JOIN od_members m ON m.id=t.assignee_id
-            JOIN od_staff_assignments s ON s.account_id=m.user_id WHERE s.branch_id=? GROUP BY t.status", [$id]);
-        $branch['attendance'] = office_access($actor,'attendance') ? rows("SELECT a.status,COUNT(*) AS total FROM od_attendance a
-            JOIN od_staff_assignments s ON s.account_id=a.account_id WHERE s.branch_id=? AND a.work_date LIKE ? GROUP BY a.status",[$id,$month.'-%']) : [];
-        $branch['budget'] = rows("SELECT b.status,COUNT(*) AS total,COALESCE(SUM(b.amount),0.00) AS amount
-            FROM od_budgets b JOIN od_budget_branches s ON s.budget_id=b.id WHERE s.branch_id=? AND b.submitted_on LIKE ? GROUP BY b.status",[$id,$month.'-%']);
+    if ($branches) {
+        $ids = array_column($branches,'id');
+        $placeholders = implode(',',array_fill(0,count($ids),'?'));
+        $monthPattern = $month.'-%';
+        $counts = [
+            'tasks' => rows("SELECT s.branch_id,t.status,COUNT(*) AS total FROM od_tasks t
+                JOIN od_members m ON m.id=t.assignee_id JOIN od_staff_assignments s ON s.account_id=m.user_id
+                WHERE s.branch_id IN ($placeholders) GROUP BY s.branch_id,t.status ORDER BY t.status",$ids),
+            'attendance' => office_access($actor,'attendance') ? rows("SELECT s.branch_id,a.status,COUNT(*) AS total FROM od_attendance a
+                JOIN od_staff_assignments s ON s.account_id=a.account_id WHERE s.branch_id IN ($placeholders)
+                AND a.work_date LIKE ? GROUP BY s.branch_id,a.status ORDER BY a.status",[...$ids,$monthPattern]) : [],
+            'budget' => rows("SELECT s.branch_id,b.status,COUNT(*) AS total,COALESCE(SUM(b.amount),0.00) AS amount
+                FROM od_budgets b JOIN od_budget_branches s ON s.budget_id=b.id WHERE s.branch_id IN ($placeholders)
+                AND b.submitted_on LIKE ? GROUP BY s.branch_id,b.status ORDER BY b.status",[...$ids,$monthPattern]),
+        ];
+        $branchIndexes = array_flip($ids);
+        foreach ($branches as &$branch) {
+            $branch += ['tasks'=>[],'attendance'=>[],'budget'=>[]];
+        }
+        unset($branch);
+        foreach ($counts as $section => $items) {
+            foreach ($items as $item) {
+                $index = $branchIndexes[$item['branch_id']];
+                unset($item['branch_id']);
+                $branches[$index][$section][] = $item;
+            }
+        }
     }
-    unset($branch);
     output(['branches'=>$branches,'month'=>$month]);
 }
 

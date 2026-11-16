@@ -27,6 +27,7 @@ try {
         $view=$bootstrap?strval_input($_GET,'view',20):null;
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        session_write_close();
         if (isset($_GET['operations'])) operations_get($a);
         if (isset($_GET['chat'])) chat_get($a);
         if (isset($_GET['budget'])) budget_get($a);
