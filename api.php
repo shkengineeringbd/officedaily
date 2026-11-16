@@ -6,6 +6,7 @@ require __DIR__.'/office-private/daily.php';
 require __DIR__.'/office-private/people.php';
 require __DIR__.'/office-private/budget.php';
 require __DIR__.'/office-private/staffing.php';
+require __DIR__.'/office-private/profile-settings.php';
 require __DIR__.'/office-private/chat.php';
 require __DIR__.'/office-private/storage.php';
 require __DIR__.'/office-private/operations.php';
@@ -25,6 +26,7 @@ try {
         $bootstrap=($_GET['bootstrap']??'')==='1';$access=$bootstrap?registration_state():null;
         if($bootstrap&&$access['state']!=='approved')output(['access'=>$access]);
         $view=$bootstrap?strval_input($_GET,'view',20):null;
+        if(isset($_GET['profileSettings'])) profile_settings_get(actor(false));
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
         if (isset($_GET['operations'])) operations_get($a);
@@ -92,6 +94,10 @@ try {
         if (!in_array($state['state'],['new','pending'],true)) fail('এই অ্যাকাউন্টের অনুরোধ আবার পাঠানো যাবে না।',409);
         $name=strval_input($v,'name',100);
         query("INSERT INTO od_registration_requests (id,user_id,email,name,status,created_at) VALUES (?,?,?,?,'pending',?) ON DUPLICATE KEY UPDATE name=VALUES(name)",[uid(),$u['id'],$u['email'],$name,$n]); output(['ok'=>true]);
+    }
+    if(in_array($action,['profile_contact_update','profile_photo_update','profile_payment_save','profile_payment_remove'],true)) {
+        profile_settings_action(actor(false),$v,$action);
+        output(['ok'=>true]);
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();

@@ -61,7 +61,11 @@ function staff_get(array $a):never{
  $mode=$_GET['staff']??'self';
  if($mode==='file'){
   $f=one('SELECT * FROM od_identity_files WHERE id=?',[id_input($_GET,'id')]);if(!$f)fail('ফাইল পাওয়া যায়নি।',404);if(!office_module_scope($a,'profiles',$f['account_id']))fail('ফাইল দেখার অনুমতি নেই।',403);
-  if($f['kind']==='nid')audit($a,'NID ফাইল দেখা',$f['account_id']);
+  if($f['kind']==='nid'){
+   $current=one('SELECT nid_id FROM od_identity_profiles WHERE account_id=?',[$f['account_id']]);
+   if($f['id']!==($current['nid_id']??null)&&$a['role']!=='owner'&&$a['userId']!==$f['account_id'])fail('পুরোনো NID দেখার অনুমতি নেই।',403);
+   audit($a,'NID ফাইল দেখা',$f['account_id']);
+  }
   $plain=openssl_decrypt($f['cipher'],'aes-256-gcm',hash('sha256','office-identity-files|'.config()['app_secret'],true),OPENSSL_RAW_DATA,$f['nonce'],$f['tag'],$f['account_id'].'|'.$f['kind']);if($plain===false)fail('ফাইল খোলা যায়নি।',500);
   header('Content-Type: '.$f['mime']);header('Content-Length: '.strlen($plain));header("Content-Security-Policy: default-src 'none'; sandbox");
   header('Content-Disposition: '.($f['kind']==='photo'?'inline':'attachment').'; filename="'.$f['kind'].($f['mime']==='application/pdf'?'.pdf':($f['mime']==='image/png'?'.png':($f['mime']==='image/webp'?'.webp':'.jpg'))).'"');echo $plain;exit;
@@ -128,7 +132,8 @@ function staff_action(array $a,array $v,string $action):bool{
   transaction(function()use($a,$v,$uid,$name,$dob,$branch){$current=one('SELECT branch_id FROM od_staff_assignments WHERE account_id=? FOR UPDATE',[$uid]);if(!$current||$current['branch_id']!==$branch)fail('ব্রাঞ্চ বদলেছে। রিফ্রেশ করে আবার জমা দিন।',409);$old=one('SELECT * FROM od_identity_profiles WHERE account_id=? FOR UPDATE',[$uid]);$expected=$v['expectedRevision']??0;if(!is_int($expected)||$expected!==(int)($old['revision']??0))fail('প্রোফাইল বদলেছে। রিফ্রেশ করুন।',409);
    $photo=staff_file($v,'photo',$uid,'photo',$old['photo_id']??null);$nid=staff_file($v,'nid',$uid,'nid',$old['nid_id']??null);$rev=(int)($old['revision']??0)+1;
    query("INSERT INTO od_identity_profiles(account_id,full_name,birth_date,photo_id,nid_id,branch_id,status,revision,submitted_at) VALUES(?,?,?,?,?,?,'pending',?,?) ON DUPLICATE KEY UPDATE full_name=VALUES(full_name),birth_date=VALUES(birth_date),photo_id=VALUES(photo_id),nid_id=VALUES(nid_id),branch_id=VALUES(branch_id),status='pending',revision=VALUES(revision),submitted_at=VALUES(submitted_at)",[$uid,$name,$dob,$photo,$nid,$branch,$rev,now()]);
-   query('INSERT INTO od_profile_events(account_id,revision,action,actor_id,actor_name,actor_email,note,snapshot,created_at) VALUES(?,?,?,?,?,?,?,?,?)',[$uid,$rev,'submitted',$uid,$a['name'],$a['email'],'',json_encode(['fullName'=>$name,'birthDate'=>$dob,'photo'=>$photo,'nid'=>$nid,'branchId'=>$branch],JSON_UNESCAPED_UNICODE),now()]);
+   query('INSERT INTO od_profile_events(account_id,revision,action,actor_id,actor_name,actor_email,note,snapshot,created_at) VALUES(?,?,?,?,?,?,?,?,?)',[$uid,$rev,'submitted',$uid,$a['name'],$a['email'],'',json_encode(['fullName'=>$name,'birthDate'=>$dob,'nid'=>$nid,'branchId'=>$branch],JSON_UNESCAPED_UNICODE),now()]);
+   profile_remove_replaced_photo($uid,$old['photo_id']??null,$photo);
   });output(['ok'=>true]);
  }
  if($action==='profile_review'){

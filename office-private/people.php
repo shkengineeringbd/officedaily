@@ -151,7 +151,19 @@ function people_action(array $a,array $v,string $action): bool {
       $basic=money_input($v,'basicSalary');$medical=money_input($v,'medicalAllowance');$other=money_input($v,'otherAllowance');
       $leave=filter_var($v['annualLeave']??null,FILTER_VALIDATE_INT);if($leave===false||$leave<0||$leave>366)fail('সঠিক ছুটির সংখ্যা দিন।');
       $title=strval_input($v,'designation',100,true);$joining=($v['joiningDate']??'')===''?null:day_input(['date'=>$v['joiningDate']]);
-      hr_touch($u['id']);query('UPDATE od_hr_profiles SET phone=?,basic_salary=?,medical_allowance=?,other_allowance=?,annual_leave=?,designation=?,joining_date=? WHERE account_id=?',[$phone,$basic,$medical,$other,$leave,$title,$joining,$u['id']]);audit($a,'প্রোফাইল ও বেতন নির্ধারণ',$u['email']);return true;
+      transaction(function () use ($a,$u,$phone,$basic,$medical,$other,$leave,$title,$joining) {
+        $id=$u['id'];
+        one('SELECT id FROM od_accounts WHERE id=? FOR UPDATE',[$id]);
+        hr_touch($id);
+        $old=one('SELECT phone FROM od_hr_profiles WHERE account_id=? FOR UPDATE',[$id]);
+        profile_remember_contact($id,'phone',$old['phone'],$phone);
+        query('UPDATE od_hr_profiles SET phone=?,basic_salary=?,medical_allowance=?,other_allowance=?,annual_leave=?,designation=?,joining_date=? WHERE account_id=?',[$phone,$basic,$medical,$other,$leave,$title,$joining,$id]);
+        if($old['phone']!==$phone){
+          query('UPDATE od_accounts SET session_version=session_version+1 WHERE id=?',[$id]);
+          query("UPDATE od_password_recovery SET status='revoked',token_hash=NULL WHERE account_id=? AND status IN ('pending','approved')",[$id]);
+        }
+        audit($a,'প্রোফাইল ও বেতন নির্ধারণ',$u['email']);
+      });return true;
     }
     if($action==='attendance') {
       $mode=$v['mode']??'';$date=day_input($v);$uid=$a['userId'];
