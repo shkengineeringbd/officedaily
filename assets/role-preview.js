@@ -12,7 +12,7 @@ async function api(body) {
 async function mount() {
     if (!csrf) return;
     const state=await api(); if(!state.canPreview) return;
-    const css=el('link'); css.rel='stylesheet'; css.href='./assets/role-preview.css'; document.head.append(css);
+    const css=el('link'); css.rel='stylesheet'; css.href='./assets/role-preview.css?v=20261123-responsive'; document.head.append(css);
     document.body.classList.add('has-role-preview');
     const bar=el('section',undefined,'role-preview-bar'); bar.setAttribute('aria-label',t('Admin view preview','অ্যাডমিন ভিউ প্রিভিউ'));
     const title=el('strong',t('Admin Preview','অ্যাডমিন প্রিভিউ'));
@@ -67,6 +67,9 @@ async function mount() {
         }
     }
     document.body.prepend(bar);
+    const syncHeight=()=>document.documentElement.style.setProperty('--role-preview-height',`${Math.ceil(bar.getBoundingClientRect().height)}px`);
+    syncHeight();
+    new ResizeObserver(syncHeight).observe(bar);
     if(state.selected) role.value=state.selected.post;
     fillUsers(); if(state.selected) user.value=state.selected.id;
     new MutationObserver(()=>{

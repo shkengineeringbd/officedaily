@@ -1,0 +1,25 @@
+name: Responsive layout
+on:
+  pull_request:
+    branches: [main]
+    paths: ['assets/**', '*.php', 'tests/responsive-layout.cjs', '.github/workflows/responsive-layout.yml']
+permissions:
+  contents: read
+jobs:
+  responsive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --package-lock=false playwright@1.58.2
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/responsive-layout.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: responsive-screenshots
+          path: responsive-*.png
+          if-no-files-found: ignore

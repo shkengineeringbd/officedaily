@@ -34,3 +34,12 @@ Use the account's actual absolute hosting path in Hostinger's PHP Cron Job confi
 - Camera flow tests with mocked browser camera: separate captures, preview restrictions, disabled controls and camera track cleanup.
 
 Real device camera permission and authenticated production workflows still need an on-device check; automated camera tests use mocks.
+
+## Responsive refinement — 23 November 2026
+
+- Collapsible navigation through tablet widths (900px); desktop navigation remains visible.
+- Phone forms use one column, readable 16px inputs and touch-sized controls. Profile fields stack within narrow tablet content columns.
+- Tables scroll inside their own container. Headers, action groups and long employee names wrap within available space.
+- Task dialogs use the available device height, including landscape and browser toolbar changes.
+- The preview toolbar measures its actual height after wrapping or rotation, keeping the workspace and navigation below it.
+- Browser regression checks cover 320–1920px widths, phone landscape, menu opening, task drawer, People/Salary/Budget layout fixtures, attendance, profile and operations. Fixtures do not validate authenticated production data or real camera permissions.

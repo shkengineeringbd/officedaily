@@ -2,3 +2,11 @@ body.has-role-preview{padding-top:60px}.role-preview-bar{box-sizing:border-box;p
 .has-role-preview .sidebar{top:60px}@media(max-width:700px){.has-role-preview .sidebar{top:104px}}
 
 .role-preview-explanation{background:#fff4dc;border-bottom:1px solid #e4c578;padding:14px 24px;color:#6b4b12;font:15px/1.6 system-ui,sans-serif}.role-preview-gate{margin:0;max-width:1100px}
+
+/* Height follows wrapped names, translated labels and device rotation. */
+body.has-role-preview{padding-top:var(--role-preview-height,60px)}
+.role-preview-bar{flex-wrap:wrap;max-height:50vh;max-height:50dvh;overflow-y:auto;overflow-x:clip}
+.role-preview-indicator{min-width:0;flex:1 1 180px}.role-preview-note{white-space:normal}
+.role-preview-panel{position:fixed;top:calc(var(--role-preview-height,60px) + 8px);right:12px;left:auto;max-height:calc(100vh - var(--role-preview-height,60px) - 20px);max-height:calc(100dvh - var(--role-preview-height,60px) - 20px);overflow-y:auto;width:350px}
+.has-role-preview .sidebar{top:var(--role-preview-height,60px)}
+@media(max-width:700px){.role-preview-bar{padding:10px 12px}.role-preview-indicator{flex-basis:calc(100% - 140px)}.role-preview-panel{left:12px;right:auto}.role-preview-menu>summary,.role-preview-bar>button{min-height:44px}.role-preview-bar .role-preview-note{margin-left:0}.role-preview-explanation{padding:14px 16px}}
