@@ -42,7 +42,7 @@ const root=path.resolve(__dirname,'..');
  }
  await page.setViewportSize({width:390,height:844});
  await page.locator('.mobile-menu').click();assert.ok(await page.locator('.sidebar').evaluate(e=>e.getBoundingClientRect().left>=-1));
- await page.locator('.scrim').click();
+ await page.locator('.scrim').click({position:{x:380,y:400}});
  await page.locator('.task-link').first().click();await page.waitForSelector('.drawer');
  for(const width of [320,390,768])await checkWidth('task drawer',width,568);
  await page.screenshot({path:'responsive-phone.png',fullPage:true});
