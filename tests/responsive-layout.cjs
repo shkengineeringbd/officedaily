@@ -31,7 +31,7 @@ const root=path.resolve(__dirname,'..');
   assert.ok(dimensions.body<=width+1,`${label} ${width}: page overflow ${JSON.stringify(dimensions)}`);
  }
  const widths=[320,360,390,600,768,820,900,1024,1280,1440,1920];
- await page.goto('http://office.test/');await page.waitForSelector('.shell');
+ await page.goto('http://office.test/?view=tasks');await page.waitForSelector('.shell');
  for(const width of widths){
   await checkWidth('workspace',width,900);
   const expected=width<=900;
@@ -45,7 +45,7 @@ const root=path.resolve(__dirname,'..');
  await page.locator('.task-link').first().click();await page.waitForSelector('.drawer');
  for(const width of [320,390,768])await checkWidth('task drawer',width,568);
  await page.screenshot({path:'responsive-phone.png',fullPage:true});
- await page.goto('http://office.test/');await page.waitForSelector('.shell');
+ await page.goto('http://office.test/?view=tasks');await page.waitForSelector('.shell');
  await page.evaluate(()=>{document.querySelector('.main>main').innerHTML=`<div class="hr-desk"><div class="hr-tabs">${['Profile','Attendance records','Salary and payroll','Leave requests','Recovery'].map(t=>`<button class="btn"><span class="hr-tab-icon">●</span>${t}</button>`).join('')}</div><label class="hr-user-picker">Employee<select><option>Employee with a long name / দীর্ঘ নাম</option></select></label><div class="hr-metrics">${['Attendance','Salary','Leave','Records'].map(t=>`<div><small>${t}</small><strong>123456789</strong></div>`).join('')}</div><section class="hr-panel panel"><div class="panel-title"><h2>Salary and attendance</h2><button class="btn">Download salary record</button></div><form class="hr-form-grid"><label>Employee name<input value="Employee name"></label><label>Payment amount<input type="number" value="25000"></label></form><div class="table-scroll"><table><thead><tr><th>Employee</th><th>Salary</th><th>Attendance</th><th>Department</th></tr></thead><tbody><tr><td>Employee long name</td><td>25000</td><td>Present</td><td>Operations</td></tr></tbody></table></div></section><section class="budget-desk"><div class="budget-process">${['Request','Review','Approval','Release'].map(t=>`<div class="budget-step"><strong>${t}</strong><small>Pending review</small></div>`).join('')}</div><div class="budget-filter-grid"><label>From<input type="date"></label><label>To<input type="date"></label><label>Branch<select><option>Dhaka branch</option></select></label></div></section></div>`});
  for(const width of widths){await checkWidth('people salary budget',width,900);const table=await page.locator('.table-scroll').evaluate(e=>({width:e.clientWidth,scroll:e.scrollWidth}));if(width<600)assert.ok(table.scroll>table.width,'table should scroll within its own container')}
  await page.setViewportSize({width:844,height:390});await checkWidth('landscape',844,390);
