@@ -33,5 +33,8 @@ jobs:
           find assets -name '*.js' -print0 | while IFS= read -r -d '' source; do
             node --input-type=module --check < "$source" || exit
           done
+      - name: Test profile payment access
+        run: php tests/profile-settings-access.php
       - name: Test upgrade and encrypted backup restoration
         run: bash tests/operations-upgrade.sh
+

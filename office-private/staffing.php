@@ -73,7 +73,7 @@ function staff_get(array $a):never{
  if($mode==='self')output([...staff_profile_info($a['userId']),'branches'=>staff_branches(),'actor'=>$a]);
  if($mode==='branches'){hr_owner($a);output(['branches'=>staff_branches()]);}
  if(!office_access($a,'profiles')||(!$a['globalRead']&&!$a['branchId']))fail('কর্মী তালিকা দেখার অনুমতি নেই।',403);
- if($mode==='detail'){$uid=id_input($_GET,'accountId');if(!office_module_scope($a,'profiles',$uid))fail('প্রোফাইল দেখার অনুমতি নেই।',403);output([...staff_profile_info($uid),'canReview'=>staff_can_review($a,$uid)]);}
+ if($mode==='detail'){$uid=id_input($_GET,'accountId');if(!office_module_scope($a,'profiles',$uid))fail('প্রোফাইল দেখার অনুমতি নেই।',403);output([...staff_profile_info($uid),'canReview'=>staff_can_review($a,$uid),'canViewPayments'=>profile_can_view_payments($a,$uid)]);}
  if($mode!=='list')fail('সঠিক স্টাফ বিভাগ দিন।');
  $where='1=1';$args=[];if(!$a['globalRead']){$where='s.branch_id=?';$args[]=$a['branchId'];}
  $items=rows("SELECT a.id,a.name,a.email,a.is_owner,s.post,s.branch_id,b.name AS branch_name,p.status AS profile_status,p.revision,p.full_name,COALESCE(m.active,a.is_owner) AS active FROM od_accounts a LEFT JOIN od_staff_assignments s ON s.account_id=a.id LEFT JOIN od_branches b ON b.id=s.branch_id LEFT JOIN od_identity_profiles p ON p.account_id=a.id LEFT JOIN od_members m ON m.user_id=a.id WHERE $where ORDER BY p.status='pending' DESC,a.name",$args);
@@ -149,3 +149,4 @@ function staff_action(array $a,array $v,string $action):bool{
  }
  fail('সঠিক স্টাফ অনুরোধ দিন।');
 }
+
