@@ -7,7 +7,7 @@ const root=path.resolve(__dirname,'..');
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const actor={id:'admin',name:'Administrator Long Name',email:'admin@example.com',role:'owner',post:'md',globalRead:true,canAssignTasks:true,canBrowseStaff:true,budgetRole:'md'};
  const tasks=[{id:'task1',title:'Review office operations and employee records',description:'Long description',date:'2026-11-23',created_at:'2026-11-23T08:00:00Z',status:'Remaining',assignee_id:'admin',assignee_name:actor.name,assigner_name:'Managing Director',assigner_post:'md',reported_today:0}];
- const state={access:{state:'approved',user:{name:actor.name,email:actor.email}},actor,today:'2026-11-23',tasks,members:[],taskAssignees:[],grants:[],scope:[],audit:[],registrations:[],pendingRegistrations:0};
+ const state={loadedView:'tasks',access:{state:'approved',user:{name:actor.name,email:actor.email}},actor,today:'2026-11-23',tasks,members:[],taskAssignees:[],grants:[],scope:[],audit:[],registrations:[],pendingRegistrations:0};
  await page.route('http://office.test/**',async route=>{
   const u=new URL(route.request().url());
   if(u.pathname==='/api.php'){
