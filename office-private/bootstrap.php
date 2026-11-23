@@ -111,7 +111,15 @@ function visible(array $a,string $taskId): array {
     $t=one('SELECT t.* FROM od_tasks t WHERE t.id=? AND '.$scope,[$taskId,...$args]);
     if(!$t)fail('কাজটি পাওয়া যায়নি।',404);return $t;
 }
-function audit(array $a,string $action,string $target): void { query('INSERT INTO od_audit (id,actor_id,actor_user_id,action,target,created_at) VALUES (?,?,?,?,?,?)',[uid(),$a['id'],$a['userId'],$action,$target,now()]); }
+function audit(array $a,string $action,string $target): void {
+    if (!empty($_SESSION['role_preview_account'])) {
+        $owner=account(true);
+        if ($owner && (int)$owner['is_owner']===1 && $a['userId']!==$owner['id']) {
+            $action='প্রিভিউ · '.$action;
+            $a=['id'=>'owner','userId'=>$owner['id']];
+        }
+    }
+    query('INSERT INTO od_audit (id,actor_id,actor_user_id,action,target,created_at) VALUES (?,?,?,?,?,?)',[uid(),$a['id'],$a['userId'],$action,$target,now()]); }
 function save_grants(string $mid,array $targets): void { query('DELETE FROM od_grants WHERE viewer_id=?',[$mid]); foreach ($targets as $t) query('INSERT INTO od_grants (id,viewer_id,target_id) VALUES (?,?,?)',[uid(),$mid,$t]); }
 function transaction(callable $fn): mixed { db()->beginTransaction(); try { $v=$fn(); db()->commit(); return $v; } catch (Throwable $e) { if(db()->inTransaction()) db()->rollBack(); throw $e; } }
 function throttle(string $category,string $identity,int $limit): void {
