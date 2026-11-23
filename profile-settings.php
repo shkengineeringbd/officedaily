@@ -37,6 +37,6 @@ if (!isset($_SESSION['account_id'])) { header('Location: ./',true,302); exit; }
         <div class="profile-bottom"><a class="btn" href="./" data-bn="ফিরে যান">Back to Office Daily</a></div>
     </main>
     <script type="module" src="assets/profile-settings.js?v=<?=filemtime(__DIR__.'/assets/profile-settings.js')?>"></script>
-</body>
+<script type="module" src="assets/role-preview.js?v=<?=filemtime(__DIR__.'/assets/role-preview.js')?>"></script></body>
 </html>
 
