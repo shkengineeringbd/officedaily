@@ -35,7 +35,7 @@ function backup_zip(string $password): string {
             $tables[] = [$table,$file];
             $line = json_encode(['schema'=>$schema],JSON_THROW_ON_ERROR)."\n";
             if (fwrite($file,$line)!==strlen($line)) fail('ব্যাকআপ লেখা যায়নি।',503);
-            $query = query('SELECT * FROM `'.$table.'`');
+            $query = query('SELECT * FROM `'.$table.'`'.($table==='od_attendance_selfies'?' WHERE 1=0':''));
             while ($record = $query->fetch()) {
                 $line = json_encode(array_map(fn($value)=>$value === null ? null : base64_encode((string)$value),$record),JSON_THROW_ON_ERROR)."\n";
                 if (fwrite($file,$line)!==strlen($line)) fail('ব্যাকআপ লেখা যায়নি।',503);

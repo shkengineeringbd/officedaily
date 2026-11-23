@@ -37,7 +37,7 @@ function output(array $data,int $status=200): never {
 }
 function headers_secure(): void {
     header('Cache-Control: private, no-store'); header('Vary: Cookie'); header('X-Content-Type-Options: nosniff'); header('X-Frame-Options: DENY');
-    header('Referrer-Policy: same-origin'); header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    header('Referrer-Policy: same-origin'); header('Permissions-Policy: camera=(self), microphone=(), geolocation=()');
     header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 }
 function session_boot(): void {
@@ -60,7 +60,7 @@ function require_post(): array {
     if ($raw===false || strlen($raw)>6000000) fail('তথ্যের আকার বেশি।',413);
     try { $data=json_decode($raw,true,16,JSON_THROW_ON_ERROR); } catch (JsonException $e) { fail('সঠিক তথ্য দিন।'); }
     if (!is_array($data) || array_is_list($data)) fail('সঠিক তথ্য দিন।');
-    if (strlen($raw)>50000 && !in_array(($data['action']??''),['profile_submit','profile_photo_update','chat_send'],true)) fail('তথ্যের আকার বেশি।',413);
+    if (strlen($raw)>50000 && !in_array(($data['action']??''),['profile_submit','profile_photo_update','chat_send','attendance_selfie_checkin'],true)) fail('তথ্যের আকার বেশি।',413);
     preview_assert_write((string)($data['action']??''));
     return $data;
 }

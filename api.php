@@ -17,10 +17,12 @@ require __DIR__.'/office-private/backup.php';
 require __DIR__.'/office-private/payslip.php';
 require __DIR__.'/office-private/mfa.php';
 require __DIR__.'/office-private/attendance-import.php';
+require_once __DIR__.'/office-private/attendance-selfie.php';
 headers_secure();
 try {
     session_boot();
     app_storage();
+    attendance_selfie_cleanup();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (isset($_GET['preview'])) preview_state();
         if (($_GET['registration']??'')==='1') output(registration_state());
@@ -30,6 +32,7 @@ try {
         if(isset($_GET['profileSettings'])) profile_settings_get(actor(false));
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
         $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        if (isset($_GET['attendanceSelfie'])) attendance_selfie_get($a);
         if (isset($_GET['operations'])) operations_get($a);
         if (isset($_GET['chat'])) chat_get($a);
         if (isset($_GET['budget'])) budget_get($a);
@@ -103,6 +106,7 @@ try {
     }
     if($action==='profile_submit') staff_action(actor(false),$v,$action);
     $a=actor();
+    if(attendance_selfie_action($a,$v,$action)) output(['ok'=>true]);
     if(attendance_import($a,$v,$action)) output(['ok'=>true]);
     if(mfa_action($a,$v,$action)) output(['ok'=>true]);
     if(backup_action($a,$v,$action)) output(['ok'=>true]);
