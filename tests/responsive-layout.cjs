@@ -28,6 +28,7 @@ const root=path.resolve(__dirname,'..');
  async function checkWidth(label,width,height){
   await page.setViewportSize({width,height});await page.waitForTimeout(120);
   const dimensions=await page.evaluate(()=>({viewport:innerWidth,body:document.documentElement.scrollWidth}));
+  if(dimensions.body>width+1){console.log('OVERFLOW',label,width,await page.evaluate(()=>[...document.querySelectorAll('body *')].map(e=>({tag:e.tagName,cls:e.className,right:Math.round(e.getBoundingClientRect().right),width:Math.round(e.getBoundingClientRect().width)})).filter(e=>e.right>innerWidth+1).slice(0,25)));await page.screenshot({path:'responsive-failure.png',fullPage:true});}
   assert.ok(dimensions.body<=width+1,`${label} ${width}: page overflow ${JSON.stringify(dimensions)}`);
  }
  const widths=[320,360,390,600,768,820,900,1024,1280,1440,1920];
