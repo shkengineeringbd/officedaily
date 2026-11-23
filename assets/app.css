@@ -101,3 +101,4 @@ img,video{max-width:100%}
 }
 @media(max-width:360px){.hr-tabs{grid-template-columns:1fr}.stats,.hr-metrics{grid-template-columns:1fr}.top-right{justify-content:flex-start}.profile-language button{padding-inline:10px}}
 @media(pointer:coarse){.btn.compact,.icon-btn,.language-switch select,.profile-language button{min-height:44px}.icon-btn{min-width:44px}}
+@media(max-width:600px){.topbar>.top-right{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:8px;align-items:center}.top-right>.icon-btn{justify-self:center}.top-right .self-profile-link{white-space:normal;justify-content:center}.topbar .logout-button{min-width:0;white-space:normal;width:100%}.top-right>[data-office-operations]{white-space:normal}.top-right .language-switch select{max-width:100%;width:100%}}
