@@ -3,11 +3,12 @@ declare(strict_types=1);
 if(!defined('OFFICE_APP')){http_response_code(404);exit;}
 
 require_once __DIR__.'/attendance-selfie.php';
+require_once __DIR__.'/task-management.php';
 
 // Schema upgrades run once per version, never on every API call.
 function app_storage():void{
     if(defined('OFFICE_SCHEMA_READY'))return;
-    $version='2026-11-23-selfie-1';
+    $version='2026-11-23-update08-1';
     try{$row=one("SELECT meta_value FROM od_app_meta WHERE meta_key='schema_version'");}
     catch(PDOException $e){if($e->getCode()!=='42S02')throw $e;$row=null;}
     if(($row['meta_value']??null)!==$version){
@@ -25,6 +26,8 @@ function app_storage():void{
                 mfa_storage();
                 profile_settings_storage();
                 attendance_selfie_storage();
+                task_management_storage();
+                attendance_selfie_schedule();
                 query("INSERT INTO od_app_meta(meta_key,meta_value) VALUES('schema_version',?) ON DUPLICATE KEY UPDATE meta_value=VALUES(meta_value)",[$version]);
             }
         }finally{query('SELECT RELEASE_LOCK(?)',[$lock]);}

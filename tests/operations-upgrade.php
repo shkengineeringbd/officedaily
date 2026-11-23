@@ -51,6 +51,7 @@ function check(bool $condition,string $message): void {
     if (!$condition) throw new RuntimeException($message);
 }
 function verify_operations(string $root): void {
+    if(is_file($root.'/office-private/task-management.php'))require_once $root.'/office-private/task-management.php';
     foreach (['staffing','operations','budget','releases','people'] as $module) {
         require $root.'/office-private/'.$module.'.php';
     }

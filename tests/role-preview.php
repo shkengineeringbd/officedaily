@@ -25,7 +25,7 @@ check($_SESSION['role_preview_account']==='staff-a','Target was not recorded.');
 check(preview_account($GLOBALS['owner'])['id']==='staff-a','Effective account differs from selected user.');
 check($GLOBALS['owner']['id']==='admin','Preview replaced the real login.');
 check($GLOBALS['audits']===[['admin','staff-a']],'Preview start must identify the actual administrator.');
-foreach(['task','status','daily_work','profile_contact_update','profile_photo_update','profile_payment_save','profile_payment_remove','change_password','login','signup','operations_access','budget_submit','chat_send','attendance_import','operations_backup'] as $action)denied(fn()=>preview_assert_write($action),403);
+foreach(['task','status','daily_work','profile_contact_update','profile_photo_update','profile_payment_save','profile_payment_remove','change_password','login','signup','operations_access','budget_submit','chat_send','attendance_import','attendance_selfie_begin','attendance_selfie_checkin','attendance_selfie_submit','operations_backup'] as $action)denied(fn()=>preview_assert_write($action),403);
 foreach(['preview_start','preview_stop','logout'] as $action)preview_assert_write($action);
 denied(fn()=>preview_action(['accountId'=>'unknown'],'preview_start'),404);
 check($_SESSION['role_preview_account']==='staff-a','Invalid selection changed the current target.');

@@ -22,12 +22,12 @@ function daily_list(array $actor, string $date): array {
     $params=[$date,...$scopeArgs];
     $params[] = $date;
     return rows("SELECT t.id,t.assignee_id,t.date AS origin,
-        COALESCE(m.name,'মালিক') AS assignee_name,
+        COALESCE(m.name,'মালিক') AS assignee_name,ta.assigner_name,ta.assigner_post,
         COALESCE(d.title,t.title) AS title,COALESCE(d.details,t.details) AS details,
         COALESCE(d.status,t.status) AS status,
         CASE WHEN d.work_date=? THEN d.report ELSE COALESCE(
           (SELECT r.content FROM od_reports r WHERE r.task_id=t.id AND r.date=? AND r.author_id=t.assignee_id LIMIT 1),'') END AS report
-        FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id
+        FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id LEFT JOIN od_task_assignments ta ON ta.task_id=t.id
         LEFT JOIN od_daily_work d ON d.task_id=t.id AND d.work_date=(
           SELECT MAX(p.work_date) FROM od_daily_work p WHERE p.task_id=t.id AND p.work_date<=?
         )
@@ -64,6 +64,7 @@ function daily_save(array $actor,array $input): void {
             $time=now();
             query('INSERT INTO od_tasks (id,assignee_id,date,title,details,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
                 [$id,$actor['id'],$date,$title,$details,$status,$time,$time]);
+            task_record_assigner($actor,$id);
         }
         if (!$owner && $date!==today()) fail('দিন শেষ হয়েছে। আজকের তারিখে আপডেট দিন।',403);
         query('INSERT INTO od_daily_work (task_id,work_date,title,details,report,status) VALUES (?,?,?,?,?,?)
@@ -72,6 +73,7 @@ function daily_save(array $actor,array $input): void {
         if (!one('SELECT task_id FROM od_daily_work WHERE task_id=? AND work_date>? LIMIT 1',[$id,$date])) {
             query('UPDATE od_tasks SET title=?,details=?,status=?,updated_at=? WHERE id=?',[$title,$details,$status,now(),$id]);
         }
+        if(isset($task))task_record_status($actor,$id,$task['status'],$status);
         audit($actor,'দৈনিক আপডেট',$date.' '.$id);
     });
 }

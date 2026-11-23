@@ -60,7 +60,7 @@ function require_post(): array {
     if ($raw===false || strlen($raw)>6000000) fail('তথ্যের আকার বেশি।',413);
     try { $data=json_decode($raw,true,16,JSON_THROW_ON_ERROR); } catch (JsonException $e) { fail('সঠিক তথ্য দিন।'); }
     if (!is_array($data) || array_is_list($data)) fail('সঠিক তথ্য দিন।');
-    if (strlen($raw)>50000 && !in_array(($data['action']??''),['profile_submit','profile_photo_update','chat_send','attendance_selfie_checkin'],true)) fail('তথ্যের আকার বেশি।',413);
+    if (strlen($raw)>50000 && !in_array(($data['action']??''),['profile_submit','profile_photo_update','chat_send','attendance_selfie_checkin','attendance_selfie_submit'],true)) fail('তথ্যের আকার বেশি।',413);
     preview_assert_write((string)($data['action']??''));
     return $data;
 }
@@ -109,7 +109,7 @@ function grants(array $a): array { return array_column(rows('SELECT target_id FR
 function visible(array $a,string $taskId): array {
     [$scope,$args]=staff_task_scope($a);
     $t=one('SELECT t.* FROM od_tasks t WHERE t.id=? AND '.$scope,[$taskId,...$args]);
-    if(!$t)fail('কাজটি পাওয়া যায়নি।',404);return $t;
+    if(!$t)fail('কাজটি পাওয়া যায়নি।',404);return task_decorate($a,$t);
 }
 function audit(array $a,string $action,string $target): void {
     if (!empty($_SESSION['role_preview_account'])) {

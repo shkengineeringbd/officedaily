@@ -23,6 +23,7 @@ try {
     session_boot();
     app_storage();
     attendance_selfie_cleanup();
+    header('X-Attendance-Cleanup: '.(attendance_selfie_scheduled()?'scheduled':'on-access'));
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
         if (isset($_GET['preview'])) preview_state();
         if (($_GET['registration']??'')==='1') output(registration_state());
@@ -31,7 +32,7 @@ try {
         $view=$bootstrap?strval_input($_GET,'view',20):null;
         if(isset($_GET['profileSettings'])) profile_settings_get(actor(false));
         if(isset($_GET['staff'])) staff_get(actor(($_GET['staff']??'')!=='self'&&($_GET['staff']??'')!=='file'));
-        $a=actor(); $a['budgetRole']=budget_role($a); $owner=$a['role']==='owner';
+        $a=actor(); $a['budgetRole']=budget_role($a); $a['canAssignTasks']=task_can_assign($a); $owner=$a['role']==='owner';
         if (isset($_GET['attendanceSelfie'])) attendance_selfie_get($a);
         if (isset($_GET['operations'])) operations_get($a);
         if (isset($_GET['chat'])) chat_get($a);
@@ -44,17 +45,17 @@ try {
         }
         if (isset($_GET['task'])) {
             $task=visible($a,id_input($_GET,'task'));
-            output(['task'=>$task,'reports'=>rows('SELECT * FROM od_reports WHERE task_id=? ORDER BY date DESC LIMIT 365',[$task['id']]),'comments'=>rows('SELECT * FROM od_comments WHERE task_id=? ORDER BY created_at DESC LIMIT 500',[$task['id']]),'today'=>today()]);
+            output(['task'=>$task,'reports'=>rows('SELECT * FROM od_reports WHERE task_id=? ORDER BY date DESC LIMIT 365',[$task['id']]),'statusHistory'=>rows('SELECT actor_name,actor_post,old_status,new_status,created_at FROM od_task_status_events WHERE task_id=? ORDER BY sequence DESC LIMIT 100',[$task['id']]),'comments'=>rows('SELECT * FROM od_comments WHERE task_id=? ORDER BY created_at DESC LIMIT 500',[$task['id']]),'today'=>today()]);
         }
         [$where,$scopeArgs]=staff_task_scope($a);$args=[today(),...$scopeArgs];
-        $tasks=(!$bootstrap||$view==='tasks')?rows("SELECT t.*,COALESCE(m.name,'মালিক') AS assignee_name,(SELECT COUNT(*) FROM od_reports r WHERE r.task_id=t.id AND r.date=?) AS reported_today FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id WHERE $where ORDER BY t.date DESC,t.created_at DESC LIMIT 1000",$args):[];
+        $tasks=(!$bootstrap||$view==='tasks')?rows("SELECT t.*,ta.assigner_name,ta.assigner_post,COALESCE(m.name,'মালিক') AS assignee_name,(SELECT COUNT(*) FROM od_reports r WHERE r.task_id=t.id AND r.date=?) AS reported_today FROM od_tasks t LEFT JOIN od_members m ON m.id=t.assignee_id LEFT JOIN od_task_assignments ta ON ta.task_id=t.id WHERE $where ORDER BY t.date DESC,t.created_at DESC LIMIT 1000",$args):[];
         foreach($tasks as &$t) $t['reported_today']=(int)$t['reported_today']; unset($t);
         $members=$owner&&(!$bootstrap||in_array($view,['tasks','history'],true))?rows('SELECT id,email,name,role,view_all,active FROM od_members ORDER BY name'):[];
         foreach($members as &$m) { $m['view_all']=(int)$m['view_all']; $m['active']=(int)$m['active']; } unset($m);
         $registrations=$owner&&(!$bootstrap||$view==='requests')?rows("SELECT id,email,name,status,created_at,reviewed_at FROM od_registration_requests ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,created_at DESC LIMIT 1000"):[];
         $pending=$owner?(int)(one("SELECT COUNT(*) AS total FROM od_registration_requests WHERE status='pending'")['total']??0):0;
         $a['canBrowseStaff']=(bool)office_access($a,'profiles')&&($a['globalRead']||(bool)$a['branchId']);
-        output(['access'=>$access,'loadedView'=>$view,'pendingRegistrations'=>$pending,'actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>!$bootstrap&&$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner&&(!$bootstrap||$view==='history')?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$registrations,'limit'=>1000]);
+        output(['access'=>$access,'loadedView'=>$view,'pendingRegistrations'=>$pending,'actor'=>$a,'taskAssignees'=>(!$bootstrap||$view==='tasks')?task_assignees($a):[],'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>!$bootstrap&&$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner&&(!$bootstrap||$view==='history')?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$registrations,'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
     if (in_array($action,['preview_start','preview_stop'],true)) preview_action($v,$action);
@@ -119,7 +120,7 @@ try {
     if(people_action($a,$v,$action)) output(['ok'=>true]);
     if ($action==='daily_work') { daily_save($a,$v); output(['ok'=>true]); }
     if (!in_array($action,['member','task','status','approve','reject','report','comment'],true)) fail('সঠিক তথ্য দিন।');
-    if (in_array($action,['member','task','status','approve','reject'],true) && $a['role']!=='owner') fail('শুধু মালিক এই পরিবর্তন করতে পারেন।',403);
+    if (in_array($action,['member','approve','reject'],true) && $a['role']!=='owner') fail('শুধু মালিক এই পরিবর্তন করতে পারেন।',403);
     if ($action==='approve' || $action==='reject') {
         $rid=id_input($v,'requestId'); $targets=$action==='approve'?targets_input($v):[];
         $name=$action==='approve'?strval_input($v,'name',100):''; $role=$action==='approve'&&($v['post']??'')==='branch_manager'?'manager':'officer'; $all=$action==='approve'?bool_input($v,'viewAll'):0;
@@ -165,16 +166,15 @@ try {
     }
     if ($action==='task') {
         $mid=id_input($v,'assigneeId'); $date=day_input($v); $title=strval_input($v,'title',200); $details=strval_input($v,'details',5000,true);
-        if ($mid!=='owner' && !one('SELECT id FROM od_members WHERE id=? AND active=1',[$mid])) fail('সক্রিয় কর্মকর্তা বেছে নিন।');
+        if(!task_can_assign($a))fail('কাজ বরাদ্দের অনুমতি নেই।',403);
+        task_assert_assignee($a,$mid);
         transaction(function() use($v,$mid,$date,$title,$details,$a,$n) {
-            if (isset($v['id'])) { $id=id_input($v,'id'); $old=visible($a,$id); if ($old['assignee_id']!==$mid || $old['date']!==$date) fail('পুরোনো কাজের কর্মকর্তা ও তারিখ বদলানো যাবে না।'); query('UPDATE od_tasks SET title=?,details=?,updated_at=? WHERE id=?',[$title,$details,$n,$id]); audit($a,'কাজ সম্পাদনা',$id); }
-            else { $id=uid(); query("INSERT INTO od_tasks (id,assignee_id,title,details,date,status,created_at,updated_at) VALUES (?,?,?,?,?,'Remaining',?,?)",[$id,$mid,$title,$details,$date,$n,$n]); audit($a,'কাজ বরাদ্দ',$id); }
+            if (isset($v['id'])) { $id=id_input($v,'id'); $old=visible($a,$id); if(!task_edit_allowed($a,$old))fail('এই কাজ সম্পাদনার অনুমতি নেই।',403); if ($old['assignee_id']!==$mid || $old['date']!==$date) fail('পুরোনো কাজের কর্মকর্তা ও তারিখ বদলানো যাবে না।'); query('UPDATE od_tasks SET title=?,details=?,updated_at=? WHERE id=?',[$title,$details,$n,$id]); audit($a,'কাজ সম্পাদনা',$id); }
+            else { $id=uid(); query("INSERT INTO od_tasks (id,assignee_id,title,details,date,status,created_at,updated_at) VALUES (?,?,?,?,?,'Remaining',?,?)",[$id,$mid,$title,$details,$date,$n,$n]); task_record_assigner($a,$id); audit($a,'কাজ বরাদ্দ',$id); }
         }); output(['ok'=>true]);
     }
     if ($action==='status') {
-        $id=id_input($v,'id'); visible($a,$id); $status=$v['status']??'';
-        if (!in_array($status,['Remaining','In Progress','Completed'],true)) fail('সঠিক তথ্য দিন।');
-        transaction(function() use($id,$status,$n,$a) { query('UPDATE od_tasks SET status=?,updated_at=? WHERE id=?',[$status,$n,$id]); audit($a,'স্ট্যাটাস: '.$status,$id); }); output(['ok'=>true]);
+        task_set_status($a,id_input($v,'id'),strval_input($v,'status',20)); output(['ok'=>true]);
     }
     if ($action==='report') {
         $tid=id_input($v,'taskId'); $task=visible($a,$tid); $date=day_input($v); $content=strval_input($v,'content');

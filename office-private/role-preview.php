@@ -35,11 +35,12 @@ function preview_assert_write(string $action): void {
 function preview_state(): never {
     $owner = account(true);
     if (!$owner || (int)$owner['is_owner']!==1 || !access_enabled($owner['id'])) output(['canPreview'=>false]);
-    $users = rows('SELECT a.id,a.name,s.post,b.name AS branch_name FROM od_accounts a
+    $users = rows('SELECT a.id,a.name,s.post,b.name AS branch_name,p.status AS profile_status,CASE WHEN p.status=\'approved\' AND p.branch_id=s.branch_id THEN 1 ELSE 0 END AS profile_ready FROM od_accounts a
         JOIN od_members m ON m.user_id=a.id AND m.email=a.email AND m.active=1
         JOIN od_hr_profiles h ON h.account_id=a.id AND h.access_enabled=1
         JOIN od_staff_assignments s ON s.account_id=a.id
         JOIN od_branches b ON b.id=s.branch_id AND b.active=1
+        LEFT JOIN od_identity_profiles p ON p.account_id=a.id
         WHERE a.is_owner=0 ORDER BY s.post,b.name,a.name,a.id');
     $id = $_SESSION['role_preview_account']??null;
     $selected = null;

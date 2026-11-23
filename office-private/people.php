@@ -138,7 +138,7 @@ function people_action(array $a,array $v,string $action): bool {
         query('DELETE FROM od_tasks WHERE assignee_id=?',[$mid]);query('DELETE FROM od_grants WHERE viewer_id=? OR target_id=?',[$mid,$mid]);
         query("DELETE FROM od_audit WHERE actor_user_id=? OR actor_id=? OR target=? OR SUBSTRING_INDEX(target,' ',-1)=? OR SUBSTRING_INDEX(target,' ',-1)=?",[$id,$mid,$u['email'],$u['email'],$id]);
         query('DELETE FROM od_members WHERE user_id=? OR email=?',[$id,$u['email']]);query('DELETE FROM od_registration_requests WHERE user_id=?',[$id]);
-        foreach(['od_attendance_selfies','od_attendance','od_leave_requests','od_payroll','od_password_recovery','od_hr_profiles'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
+        foreach(['od_attendance_checkout_selfies','od_attendance_selfies','od_attendance','od_leave_requests','od_payroll','od_password_recovery','od_hr_profiles'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
         query('DELETE FROM od_budget_roles WHERE account_id=?',[$id]);
         foreach(['od_identity_files','od_identity_profiles','od_staff_assignments','od_profile_events'] as $table)query("DELETE FROM $table WHERE account_id=?",[$id]);
         query('DELETE FROM od_chat_files WHERE sender_id=?',[$id]);query('DELETE FROM od_chat_messages WHERE sender_id=?',[$id]);query("UPDATE od_chat_members SET display_name='Former user' WHERE account_id=?",[$id]);
@@ -181,6 +181,7 @@ function people_action(array $a,array $v,string $action): bool {
             if($r)fail('আজকের উপস্থিতি আগে থেকেই আছে। প্রয়োজনে অ্যাডমিনকে জানান।',409);
             query("INSERT INTO od_attendance (account_id,work_date,status,check_in,note,updated_at) VALUES (?,?,'Present',?,'',?)",[$uid,$date,now(),now()]);
           } elseif($mode==='out') {
+            fail('My attendance থেকে নতুন সেলফি দিয়ে চেক-আউট করুন।',409);
             if(!$r||!$r['check_in']||$r['check_out'])fail('চেক-ইন ও চেক-আউটের অবস্থা যাচাই করুন।',409);
             query('UPDATE od_attendance SET check_out=?,updated_at=? WHERE account_id=? AND work_date=?',[now(),now(),$uid,$date]);
           }else fail('সঠিক উপস্থিতির অনুরোধ দিন।');

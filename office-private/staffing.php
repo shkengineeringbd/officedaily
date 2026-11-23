@@ -33,8 +33,9 @@ function staff_account_allowed(array $a,string $uid):bool{
 }
 function staff_assert_account(array $a,string $uid):void{if(!staff_account_allowed($a,$uid))fail('এই ব্রাঞ্চ বা ইউজারের তথ্য দেখার অনুমতি নেই।',403);}
 function staff_task_scope(array $a,string $alias='t'):array{
- if($a['globalRead'])return ['1=1',[]];
+ if($a['globalRead']||task_is_global($a))return ['1=1',[]];
  if($a['manageBranch'])return ["EXISTS (SELECT 1 FROM od_members sm JOIN od_staff_assignments ss ON ss.account_id=sm.user_id WHERE sm.id=$alias.assignee_id AND ss.branch_id=?)",[$a['branchId']]];
+ if(task_can_assign($a))return ["($alias.assignee_id=? OR EXISTS (SELECT 1 FROM od_members sm JOIN od_staff_assignments ss ON ss.account_id=sm.user_id WHERE sm.id=$alias.assignee_id AND ss.branch_id=? AND ss.post IN ('staff','officer')))",[$a['id'],$a['branchId']]];
  return ["$alias.assignee_id=?",[$a['id']]];
 }
 function staff_budget_scope(array $a,string $alias='b'):array{

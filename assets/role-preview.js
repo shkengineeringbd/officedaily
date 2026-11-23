@@ -34,7 +34,8 @@ async function mount() {
     function fillUsers() {
         user.replaceChildren();
         for(const entry of state.users.filter(entry=>entry.post===role.value)) {
-            const option=el('option',entry.name+' · '+entry.branch_name); option.value=entry.id; user.append(option);
+            const ready=Number(entry.profile_ready)===1;
+            const option=el('option',entry.name+' · '+entry.branch_name+' · '+(ready?t('Approved','অনুমোদিত'):t('Profile approval required','প্রোফাইল অনুমোদন বাকি'))); option.value=entry.id; user.append(option);
         }
         user.disabled=!user.options.length; view.disabled=!user.options.length;
     }
@@ -60,6 +61,10 @@ async function mount() {
             catch(failure) { error.textContent=failure.message; menu.open=true; stop.disabled=false; }
         });
         bar.append(note,stop);
+        if(state.selected && Number(state.selected.profile_ready)!==1) {
+            const gate=el('p',t('This account needs final profile approval. Its actual view is limited to the profile until approval; other workspace pages are locked.','এই অ্যাকাউন্টের প্রোফাইলের চূড়ান্ত অনুমোদন বাকি। তাই আসল ইউজার ভিউতেও শুধু প্রোফাইল দেখা যায়; অনুমোদনের পর অন্য পেজ খুলবে।'),'role-preview-gate');
+            const details=document.createElement('section');details.className='role-preview-explanation';details.append(gate);document.body.prepend(details);
+        }
     }
     document.body.prepend(bar);
     if(state.selected) role.value=state.selected.post;
