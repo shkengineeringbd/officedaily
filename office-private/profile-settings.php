@@ -54,30 +54,36 @@ function profile_remove_replaced_photo(string $account,?string $old,string $new)
     if (!$legacyReference) query("DELETE FROM od_identity_files WHERE account_id=? AND id=? AND kind='photo'",[$account,$old]);
 }
 
+function profile_can_view_payments(array $actor, string $id): bool {
+    if ($id === $actor['userId'] || $actor['role'] === 'owner') return true;
+    return (!empty($actor['globalRead']) || !empty($actor['manageBranch']))
+        && staff_account_allowed($actor, $id);
+}
+
 function profile_settings_get(array $actor): never {
     $self = $actor['userId'];
     $id = isset($_GET['accountId']) ? id_input($_GET,'accountId') : $self;
-    if ($id!==$self) hr_owner($actor);
-    $current = one('SELECT a.email,h.phone,p.photo_id,p.nid_id FROM od_accounts a
+    if (!profile_can_view_payments($actor,$id)) fail('পেমেন্ট তথ্য দেখার অনুমতি নেই।',403);
+    $current = one('SELECT a.name,a.email,h.phone,h.designation,p.full_name,p.photo_id,p.nid_id FROM od_accounts a
         LEFT JOIN od_hr_profiles h ON h.account_id=a.id LEFT JOIN od_identity_profiles p ON p.account_id=a.id WHERE a.id=?',[$id]);
     if (!$current) fail('ইউজার পাওয়া যায়নি।',404);
+    $canHistory = $id===$self || $actor['role']==='owner';
     $contacts = [];
-    foreach (rows('SELECT kind,nonce,tag,cipher,changed_at FROM od_profile_contact_history
-        WHERE account_id=? ORDER BY id DESC',[$id]) as $entry) {
+    foreach ($canHistory ? rows('SELECT kind,nonce,tag,cipher,changed_at FROM od_profile_contact_history
+        WHERE account_id=? ORDER BY id DESC',[$id]) : [] as $entry) {
         $contacts[] = ['kind'=>$entry['kind'],'value'=>profile_open($entry,$id.'|contact|'.$entry['kind']),'changedAt'=>$entry['changed_at']];
     }
-    $nids = $current['nid_id']===null ? [] : rows("SELECT id,created_at FROM od_identity_files
+    $nids = !$canHistory || $current['nid_id']===null ? [] : rows("SELECT id,created_at FROM od_identity_files
         WHERE account_id=? AND kind='nid' AND id<>? ORDER BY created_at DESC,id DESC",[$id,$current['nid_id']]);
     $payments = [];
-    if ($id===$self) {
+    {
         foreach (rows('SELECT * FROM od_profile_payment_methods WHERE account_id=? ORDER BY kind,id',[$id]) as $row) {
             $details = json_decode(profile_open($row,$id.'|payment|'.$row['id'].'|'.$row['kind']),true,512,JSON_THROW_ON_ERROR);
             $payments[] = ['id'=>$row['id'],'kind'=>$row['kind'],'revision'=>(int)$row['revision'],'details'=>$details];
         }
-    } else {
-        audit($actor,'প্রোফাইলের ইতিহাস দেখা',$id);
     }
-    output(['current'=>$current,'contacts'=>$contacts,'nids'=>$nids,'payments'=>$payments,'isSelf'=>$id===$self]);
+    if ($id!==$self) audit($actor,'প্রোফাইল পেমেন্ট তথ্য দেখা',$id);
+    output(['current'=>$current,'contacts'=>$contacts,'nids'=>$nids,'payments'=>$payments,'isSelf'=>$id===$self,'canHistory'=>$canHistory,'assignment'=>staff_assignment($id)]);
 }
 
 function profile_update_contact(array $actor,array $input): void {
@@ -164,3 +170,4 @@ function profile_settings_action(array $actor,array $input,string $action): void
     }
     profile_save_payment($actor,$input,$action);
 }
+
