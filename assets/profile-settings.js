@@ -63,7 +63,7 @@ function renderContact(data) {
             await request({action:'profile_photo_update',photo:image,expectedPhotoId:current.photo_id});
         }); avatar.append(photo);
     } else if (isSelf) {
-        const link = element('a',t('Add your first photo in My Profile','প্রথম ছবি আমার প্রোফাইলে যোগ করুন'),'btn'); link.href = './'; avatar.append(link);
+        const link = element('a',t('Add your first photo in My Profile','প্রথম ছবি আমার প্রোফাইলে যোগ করুন'),'btn'); link.href = './?view=profile'; avatar.append(link);
     }
     const contact = element('form',undefined,'profile-fields');
     field(contact,'name',t('Full name','পূর্ণ নাম'),current.full_name || current.name).readOnly = true;
@@ -77,6 +77,8 @@ function renderContact(data) {
     else nid.append(element('p',t('Not submitted','জমা দেওয়া হয়নি')));
     contact.append(nid);
     if (isSelf) {
+        const editProfile = element('a',t('Edit personal profile / NID','ব্যক্তিগত প্রোফাইল / NID আপডেট করুন'),'btn profile-wide');
+        editProfile.href = './?view=profile'; contact.append(editProfile);
         contact.append(element('p',t('Current password required to change email or phone.','ইমেইল বা মোবাইল বদলাতে বর্তমান পাসওয়ার্ড প্রয়োজন।'),'profile-notice'));
         const password = field(contact,'password',t('Current password','বর্তমান পাসওয়ার্ড'),'','password',true,72); password.autocomplete = 'current-password';
         password.parentElement.className = 'profile-wide';
@@ -123,7 +125,7 @@ function renderPayments(data) {
         section.append(panel);
     }
     if (data.isSelf) for (const [kind,label] of [['bank',t('+ Add bank account','+ ব্যাংক অ্যাকাউন্ট যোগ করুন')],['bkash',t('+ Add bKash number','+ bKash যোগ করুন')]]) {
-        const panel = element('details',undefined,'profile-add-account'); panel.append(element('summary',label),paymentForm(kind)); section.append(panel);
+        const panel = element('details',undefined,'profile-add-account'); panel.open = !data.payments.some(entry => entry.kind === kind); panel.append(element('summary',label),paymentForm(kind)); section.append(panel);
     }
     section.hidden = false;
 }
