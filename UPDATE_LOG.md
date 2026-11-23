@@ -2,6 +2,8 @@
 
 Date: 23 November 2026 (Asia/Dhaka)
 
+Deployment verified: Update 08 code is live at https://shkg.info. Published JavaScript/CSS matched the checked source; the authenticated API correctly rejected an anonymous request. Production cleanup mode was confirmed as **on-access**, so the Hostinger Cron Job remains outstanding. No open Hostinger session was available to configure it.
+
 This is the identifier for the current requested update batch, not a count inferred from earlier releases.
 
 ## Included
