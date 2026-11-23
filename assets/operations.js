@@ -495,11 +495,66 @@ async function renderMfa() {
     section.append(form);
 }
 
+function setupOperationsNavigation(views, outcomes) {
+    const nav = document.querySelector('#operations-nav');
+    if (!nav) return;
+    const visible = [];
+    views.forEach((view, index) => {
+        const section = document.querySelector('#operations-' + view.id);
+        const outcome = outcomes[index];
+        if (outcome.status === 'rejected' && outcome.reason.status === 403) {
+            section.hidden = true;
+            return;
+        }
+        section.hidden = false;
+        if (outcome.status === 'rejected') {
+            section.replaceChildren(element('h2', view.label), element('p', 'এই বিভাগ লোড করা যায়নি। আবার চেষ্টা করতে পৃষ্ঠা রিফ্রেশ করুন।'));
+        }
+        const button = element('button');
+        button.type = 'button';
+        button.className = 'operations-nav-item';
+        button.setAttribute('aria-controls', section.id);
+        const icon = element('span', view.icon);
+        icon.className = 'operations-nav-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon, element('span', view.label));
+        nav.append(button);
+        visible.push({ ...view, section, button });
+    });
+    function activate(id, updateHash = true) {
+        const selected = visible.find(view => view.id === id) || visible[0];
+        if (!selected) return;
+        visible.forEach(view => {
+            const active = view === selected;
+            view.section.dataset.active = String(active);
+            if (active) view.button.setAttribute('aria-current', 'page');
+            else view.button.removeAttribute('aria-current');
+        });
+        document.querySelector('#operations-current-title').textContent = selected.label;
+        document.querySelector('#operations-description').textContent = selected.description;
+        if (updateHash) history.replaceState(null, '', '#' + selected.id);
+    }
+    visible.forEach(view => view.button.addEventListener('click', () => activate(view.id)));
+    window.addEventListener('hashchange', () => activate(location.hash.slice(1), false));
+    activate(location.hash.slice(1), false);
+}
+
 if (status) {
-    const outcomes = await Promise.allSettled([renderNotices(), renderAccess(), renderReleases(), renderFinance(), renderInbox(), renderInsights(), renderMfa()]);
+    const views = [
+        {id:'inbox',label:'অনুমোদনের ইনবক্স',icon:'✓',description:'অপেক্ষমাণ বাজেট ও ছুটির আবেদন এক জায়গায় দেখুন।',render:renderInbox},
+        {id:'insights',label:'ব্রাঞ্চ ড্যাশবোর্ড',icon:'▦',description:'মাস অনুযায়ী ব্রাঞ্চের কাজ, হাজিরা ও বাজেটের সারাংশ দেখুন।',render:renderInsights},
+        {id:'finance',label:'বেতন ও হিসাব',icon:'৳',description:'বেতনের তালিকা যাচাই, চূড়ান্ত ও বাজেটে যোগ করুন।',render:renderFinance},
+        {id:'releases',label:'বাজেট রিলিজ',icon:'▤',description:'কিস্তি, চূড়ান্ত রিলিজ ও ব্যয়ের নিষ্পত্তি পরিচালনা করুন।',render:renderReleases},
+        {id:'notices',label:'অফিস নোটিশ',icon:'☷',description:'প্রকাশিত নোটিশ দেখুন এবং অনুমতি থাকলে নতুন নোটিশ প্রকাশ করুন।',render:renderNotices},
+        {id:'access',label:'অ্যাক্সেস ও ব্যাকআপ',icon:'⚙',description:'ইউজারের অনুমতি, এনক্রিপ্টেড ব্যাকআপ ও হাজিরা আমদানি পরিচালনা করুন।',render:renderAccess},
+        {id:'mfa',label:'অ্যাকাউন্ট সুরক্ষা',icon:'⊙',description:'আপনার অ্যাকাউন্টে অথেনটিকেটর সুরক্ষা সেটআপ করুন।',render:renderMfa},
+    ];
+    const outcomes = await Promise.allSettled(views.map(view => view.render()));
+    setupOperationsNavigation(views, outcomes);
     const failure = outcomes.find(result => result.status === 'rejected' && result.reason.status !== 403);
-    if (failure) status.textContent = failure.reason.message;
+    if (failure) status.textContent = 'কিছু বিভাগ লোড হয়নি। সংশ্লিষ্ট বিভাগ খুলে বিস্তারিত দেখুন।';
     else if (outcomes.every(result => result.status === 'rejected')) status.textContent = 'এই বিভাগে আপনার অ্যাক্সেস নেই।';
+    else status.textContent = '';
 } else {
     const root = document.querySelector('#root');
     const observer = new MutationObserver(() => {
