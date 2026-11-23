@@ -22,6 +22,7 @@ try {
     session_boot();
     app_storage();
     if (($_SERVER['REQUEST_METHOD']??'GET')==='GET') {
+        if (isset($_GET['preview'])) preview_state();
         if (($_GET['registration']??'')==='1') output(registration_state());
         $bootstrap=($_GET['bootstrap']??'')==='1';$access=$bootstrap?registration_state():null;
         if($bootstrap&&$access['state']!=='approved')output(['access'=>$access]);
@@ -53,6 +54,7 @@ try {
         output(['access'=>$access,'loadedView'=>$view,'pendingRegistrations'=>$pending,'actor'=>$a,'today'=>today(),'tasks'=>$tasks,'members'=>$members,'grants'=>!$bootstrap&&$owner?rows('SELECT viewer_id,target_id FROM od_grants'):[],'scope'=>[],'audit'=>$owner&&(!$bootstrap||$view==='history')?rows('SELECT action,target,created_at,actor_id FROM od_audit ORDER BY created_at DESC LIMIT 80'):[],'registrations'=>$registrations,'limit'=>1000]);
     }
     $v=require_post(); $action=strval_input($v,'action',40); $n=now();
+    if (in_array($action,['preview_start','preview_stop'],true)) preview_action($v,$action);
     if ($action==='recovery_request') recovery_request($v);
     if ($action==='recovery_reset') recovery_reset($v);
     if ($action==='login') {

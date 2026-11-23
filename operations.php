@@ -28,5 +28,5 @@ session_boot();
         <section id="operations-access" class="panel" hidden></section>
     </main>
     <script type="module" src="assets/operations.js"></script>
-</body>
+<script type="module" src="assets/role-preview.js?v=<?=filemtime(__DIR__.'/assets/role-preview.js')?>"></script></body>
 </html>

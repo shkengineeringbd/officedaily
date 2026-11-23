@@ -61,6 +61,7 @@ function require_post(): array {
     try { $data=json_decode($raw,true,16,JSON_THROW_ON_ERROR); } catch (JsonException $e) { fail('সঠিক তথ্য দিন।'); }
     if (!is_array($data) || array_is_list($data)) fail('সঠিক তথ্য দিন।');
     if (strlen($raw)>50000 && !in_array(($data['action']??''),['profile_submit','profile_photo_update','chat_send'],true)) fail('তথ্যের আকার বেশি।',413);
+    preview_assert_write((string)($data['action']??''));
     return $data;
 }
 function strval_input(array $v,string $key,int $max=5000,bool $empty=false): string {
@@ -80,11 +81,11 @@ function targets_input(array $v): array {
     foreach ($targets as $id) { if (!is_string($id) || strlen($id)>100 || !one('SELECT id FROM od_members WHERE id=?',[$id])) fail('অনুমতির কর্মকর্তা পাওয়া যায়নি।'); }
     return array_values(array_unique($targets));
 }
-function account(): ?array {
+function account(bool $real=false): ?array {
     if (!isset($_SESSION['account_id'])) return null;
     $u=one('SELECT id,email,name,is_owner,session_version,password_hash FROM od_accounts WHERE id=?',[$_SESSION['account_id']]);
-    if (!$u || (int)$u['session_version']!==(int)($_SESSION['version']??-1)) { unset($_SESSION['account_id']); return null; }
-    return $u;
+    if (!$u || (int)$u['session_version']!==(int)($_SESSION['version']??-1)) { unset($_SESSION['account_id'],$_SESSION['role_preview_account']); return null; }
+    return $real ? $u : preview_account($u);
 }
 function require_account(): array { $u=account(); if (!$u) fail('লগইন করুন।',401); return $u; }
 function actor(bool $verified=true): array {
@@ -110,7 +111,15 @@ function visible(array $a,string $taskId): array {
     $t=one('SELECT t.* FROM od_tasks t WHERE t.id=? AND '.$scope,[$taskId,...$args]);
     if(!$t)fail('কাজটি পাওয়া যায়নি।',404);return $t;
 }
-function audit(array $a,string $action,string $target): void { query('INSERT INTO od_audit (id,actor_id,actor_user_id,action,target,created_at) VALUES (?,?,?,?,?,?)',[uid(),$a['id'],$a['userId'],$action,$target,now()]); }
+function audit(array $a,string $action,string $target): void {
+    if (!empty($_SESSION['role_preview_account'])) {
+        $owner=account(true);
+        if ($owner && (int)$owner['is_owner']===1 && $a['userId']!==$owner['id']) {
+            $action='প্রিভিউ · '.$action;
+            $a=['id'=>'owner','userId'=>$owner['id']];
+        }
+    }
+    query('INSERT INTO od_audit (id,actor_id,actor_user_id,action,target,created_at) VALUES (?,?,?,?,?,?)',[uid(),$a['id'],$a['userId'],$action,$target,now()]); }
 function save_grants(string $mid,array $targets): void { query('DELETE FROM od_grants WHERE viewer_id=?',[$mid]); foreach ($targets as $t) query('INSERT INTO od_grants (id,viewer_id,target_id) VALUES (?,?,?)',[uid(),$mid,$t]); }
 function transaction(callable $fn): mixed { db()->beginTransaction(); try { $v=$fn(); db()->commit(); return $v; } catch (Throwable $e) { if(db()->inTransaction()) db()->rollBack(); throw $e; } }
 function throttle(string $category,string $identity,int $limit): void {
@@ -120,5 +129,7 @@ function throttle(string $category,string $identity,int $limit): void {
     if ((int)$r['attempts']>$limit) { header('Retry-After: 600'); fail('অনেকবার চেষ্টা হয়েছে। ১০ মিনিট পরে চেষ্টা করুন।',429); }
     if (random_int(1,100)===1) query('DELETE FROM od_rate_limits WHERE window_at<?',[$n-3600]);
 }
-function sign_in(array $u): void { session_regenerate_id(true); $_SESSION['account_id']=$u['id']; $_SESSION['version']=(int)$u['session_version']; $_SESSION['started']=time(); $_SESSION['last_seen']=time(); }
+function sign_in(array $u): void { unset($_SESSION['role_preview_account']); session_regenerate_id(true); $_SESSION['account_id']=$u['id']; $_SESSION['version']=(int)$u['session_version']; $_SESSION['started']=time(); $_SESSION['last_seen']=time(); }
 
+
+require_once __DIR__.'/role-preview.php';
